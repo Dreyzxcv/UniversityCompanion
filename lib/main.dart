@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 import 'firebase_options.dart';
-import 'auth/auth_gate.dart';
+import 'auth/splash_screen.dart';
 import 'shared/services/auth_service.dart';
 import 'shared/theme/app_theme.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -32,7 +32,7 @@ class UniversityCompanionApp extends StatelessWidget {
         title: 'Campus Companion',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.themeData,
-        home: const AuthGate(),
+        home: const SplashScreen(),
       ),
     );
   }
