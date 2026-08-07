@@ -1,0 +1,33 @@
+name: university_companion_app
+description: Campus Companion - Class Schedule & QPI Calculator MVP for Philippine university students.
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+
+  # Firebase
+  firebase_core: ^3.6.0
+  firebase_auth: ^5.3.1
+  cloud_firestore: ^5.4.4
+
+  # State management
+  provider: ^6.1.2
+
+  # Utilities
+  intl: ^0.19.0
+  uuid: ^4.4.2
+  fl_chart: ^0.69.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
