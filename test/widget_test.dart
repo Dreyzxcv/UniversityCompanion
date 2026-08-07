@@ -1,30 +1,32 @@
-// This is a basic Flutter widget test.
+// Basic smoke test for Campus Companion.
 //
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+// The default Flutter template test (looking for a counter and a '+'
+// button) doesn't apply to this app, so this instead verifies that the
+// app boots into SplashScreen and shows the logo without throwing.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:university_companion_app/main.dart';
+import 'package:university_companion_app/auth/splash_screen.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const UniversityCompanionApp());
+  testWidgets('SplashScreen renders logo and fades in', (WidgetTester tester) async {
+    // Pump SplashScreen directly (rather than the full app) to avoid
+    // needing a real Firebase.initializeApp() call in a widget test.
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: SplashScreen(),
+      ),
+    );
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    // Initial frame: animation hasn't completed yet, but the logo image
+    // should already be in the tree (fading in via Hero + AnimationController).
+    expect(find.byType(Image), findsOneWidget);
+    expect(find.byType(Hero), findsOneWidget);
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    // Advance past the fade/scale-in animation (900ms) without yet
+    // triggering the 1600ms delayed navigation to AuthGate.
+    await tester.pump(const Duration(milliseconds: 900));
+    expect(find.byType(SplashScreen), findsOneWidget);
   });
 }
