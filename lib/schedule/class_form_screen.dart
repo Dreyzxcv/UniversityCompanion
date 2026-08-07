@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../shared/models/class_session.dart';
+import '../shared/theme/app_theme.dart';
 import '../shared/widgets/color_palette.dart';
 
 /// Returned by the form on save; the caller decides how to persist it.
@@ -121,6 +122,7 @@ class _ClassFormScreenState extends State<ClassFormScreen> {
     final proceed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Schedule Conflict'),
         content: Text(
           'This overlaps with $names on ${candidate.day}. Save it anyway?',
@@ -141,7 +143,13 @@ class _ClassFormScreenState extends State<ClassFormScreen> {
   }
 
   void _showError(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        content: Text(msg),
+      ),
+    );
   }
 
   @override
@@ -160,89 +168,104 @@ class _ClassFormScreenState extends State<ClassFormScreen> {
     return Scaffold(
       appBar: AppBar(title: Text(_isEditing ? 'Edit Class' : 'Add Class')),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
         child: Form(
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              TextFormField(
-                controller: _subjectCodeCtrl,
-                decoration: const InputDecoration(labelText: 'Subject code'),
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _subjectNameCtrl,
-                decoration: const InputDecoration(labelText: 'Subject name'),
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
-              ),
-              const SizedBox(height: 12),
-              Row(
+              _SectionCard(
+                icon: Icons.menu_book_rounded,
+                title: 'Subject Details',
                 children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _sectionCtrl,
-                      decoration: const InputDecoration(labelText: 'Section'),
-                    ),
+                  TextFormField(
+                    controller: _subjectCodeCtrl,
+                    decoration: const InputDecoration(labelText: 'Subject code'),
+                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextFormField(
-                      controller: _unitsCtrl,
-                      decoration: const InputDecoration(labelText: 'Units'),
-                      keyboardType: TextInputType.number,
-                      validator: (v) => (num.tryParse(v ?? '') == null) ? 'Invalid' : null,
-                    ),
+                  const SizedBox(height: 14),
+                  TextFormField(
+                    controller: _subjectNameCtrl,
+                    decoration: const InputDecoration(labelText: 'Subject name'),
+                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: _sectionCtrl,
+                          decoration: const InputDecoration(labelText: 'Section'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextFormField(
+                          controller: _unitsCtrl,
+                          decoration: const InputDecoration(labelText: 'Units'),
+                          keyboardType: TextInputType.number,
+                          validator: (v) => (num.tryParse(v ?? '') == null) ? 'Invalid' : null,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  TextFormField(
+                    controller: _professorCtrl,
+                    decoration: const InputDecoration(labelText: 'Professor'),
+                  ),
+                  const SizedBox(height: 14),
+                  TextFormField(
+                    controller: _roomCtrl,
+                    decoration: const InputDecoration(labelText: 'Room'),
                   ),
                 ],
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _professorCtrl,
-                decoration: const InputDecoration(labelText: 'Professor'),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _roomCtrl,
-                decoration: const InputDecoration(labelText: 'Room'),
               ),
               const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                value: _day,
-                decoration: const InputDecoration(labelText: 'Day'),
-                items: kWeekDays
-                    .map((d) => DropdownMenuItem(value: d, child: Text(d)))
-                    .toList(),
-                onChanged: (v) => setState(() => _day = v!),
-              ),
-              const SizedBox(height: 12),
-              Row(
+              _SectionCard(
+                icon: Icons.schedule_rounded,
+                title: 'Schedule',
                 children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => _pickTime(isStart: true),
-                      child: Text('Start: ${_startTime.format(context)}'),
-                    ),
+                  DropdownButtonFormField<String>(
+                    value: _day,
+                    decoration: const InputDecoration(labelText: 'Day'),
+                    items: kWeekDays
+                        .map((d) => DropdownMenuItem(value: d, child: Text(d)))
+                        .toList(),
+                    onChanged: (v) => setState(() => _day = v!),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => _pickTime(isStart: false),
-                      child: Text('End: ${_endTime.format(context)}'),
-                    ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _TimePickerTile(
+                          label: 'Start',
+                          time: _startTime.format(context),
+                          onTap: () => _pickTime(isStart: true),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _TimePickerTile(
+                          label: 'End',
+                          time: _endTime.format(context),
+                          onTap: () => _pickTime(isStart: false),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text('Color', style: TextStyle(fontWeight: FontWeight.w600)),
-              ),
-              const SizedBox(height: 8),
-              ColorPickerRow(
-                selected: _color,
-                onSelected: (c) => setState(() => _color = c),
+              const SizedBox(height: 16),
+              _SectionCard(
+                icon: Icons.palette_rounded,
+                title: 'Color',
+                children: [
+                  ColorPickerRow(
+                    selected: _color,
+                    onSelected: (c) => setState(() => _color = c),
+                  ),
+                ],
               ),
               const SizedBox(height: 28),
               FilledButton(
@@ -251,6 +274,103 @@ class _ClassFormScreenState extends State<ClassFormScreen> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Rounded white card with a small icon-chip header, matching the visual
+/// language used on the Home screen (`_SchoolCard`, `_UpcomingCard`).
+class _SectionCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final List<Widget> children;
+
+  const _SectionCard({
+    required this.icon,
+    required this.title,
+    required this.children,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.cardBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: AppColors.pillLavender,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: AppColors.navyDark, size: 18),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                title,
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          ...children,
+        ],
+      ),
+    );
+  }
+}
+
+/// Time-picker button styled like the app's other outlined chips rather
+/// than a bare OutlinedButton, so it reads as an input field.
+class _TimePickerTile extends StatelessWidget {
+  final String label;
+  final String time;
+  final VoidCallback onTap;
+
+  const _TimePickerTile({
+    required this.label,
+    required this.time,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppColors.pillLavender.withOpacity(0.6),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(fontSize: 11, color: AppColors.textMuted, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 2),
+            Row(
+              children: [
+                Icon(Icons.access_time_rounded, size: 16, color: AppColors.navyDark),
+                const SizedBox(width: 6),
+                Text(time, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+              ],
+            ),
+          ],
         ),
       ),
     );
