@@ -8,6 +8,7 @@ import '../shared/widgets/term_selector.dart';
 import 'add_subject_sheet.dart';
 import 'grade_scale_section.dart';
 import 'qpi_trend_section.dart';
+import '../shared/theme/app_theme.dart';
 
 class QpiScreen extends StatefulWidget {
   const QpiScreen({super.key});
@@ -94,7 +95,7 @@ class _QpiScreenState extends State<QpiScreen> {
                 );
 
                 return ListView(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
                   children: [
                     Row(
                       children: [
@@ -102,7 +103,7 @@ class _QpiScreenState extends State<QpiScreen> {
                           child: _QpiSummaryCard(
                             label: 'Semester QPI',
                             value: semesterQpi,
-                            color: Colors.indigo.shade50,
+                            color: AppColors.pillLavender,
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -110,7 +111,7 @@ class _QpiScreenState extends State<QpiScreen> {
                           child: _QpiSummaryCard(
                             label: 'Cumulative QPI',
                             value: cumulativeQpi,
-                            color: Colors.teal.shade50,
+                            color: AppColors.mint
                           ),
                         ),
                       ],

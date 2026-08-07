@@ -4,15 +4,25 @@ import 'package:provider/provider.dart';
 import 'firebase_options.dart';
 import 'auth/auth_gate.dart';
 import 'shared/services/auth_service.dart';
+import 'shared/theme/app_theme.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  runApp(const CampusCompanionApp());
+
+  if (kIsWeb) {
+    FirebaseFirestore.instance.settings = const Settings(
+      persistenceEnabled: true,
+    );
+  }
+
+  runApp(const UniversityCompanionApp());
 }
 
-class CampusCompanionApp extends StatelessWidget {
-  const CampusCompanionApp({super.key});
+class UniversityCompanionApp extends StatelessWidget {
+  const UniversityCompanionApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -21,22 +31,7 @@ class CampusCompanionApp extends StatelessWidget {
       child: MaterialApp(
         title: 'Campus Companion',
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          useMaterial3: true,
-          colorSchemeSeed: Colors.indigo,
-          cardTheme: CardThemeData(
-            elevation: 0,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          ),
-          inputDecorationTheme: InputDecorationTheme(
-            filled: true,
-            fillColor: Colors.grey.shade100,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-          ),
-        ),
+        theme: AppTheme.themeData,
         home: const AuthGate(),
       ),
     );

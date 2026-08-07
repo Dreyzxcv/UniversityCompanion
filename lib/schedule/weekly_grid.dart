@@ -24,6 +24,7 @@ class WeeklyGrid extends StatelessWidget {
     final totalHeight = (_endHour - _startHour) * _hourHeight;
 
     return SingleChildScrollView(
+      padding: const EdgeInsets.only(bottom: 100),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: SizedBox(
