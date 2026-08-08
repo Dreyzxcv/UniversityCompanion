@@ -66,13 +66,16 @@ class ScheduleScreen extends StatelessWidget {
         child: Wrap(
           children: [
             ListTile(
-              leading: const Icon(Icons.save_outlined, color: AppColors.navyDark),
+              leading:
+                  const Icon(Icons.save_outlined, color: AppColors.navyDark),
               title: const Text('Save changes'),
               onTap: () => Navigator.pop(ctx, 'save'),
             ),
             ListTile(
-              leading: const Icon(Icons.delete_outline, color: AppColors.overdue),
-              title: const Text('Delete class', style: TextStyle(color: AppColors.overdue)),
+              leading:
+                  const Icon(Icons.delete_outline, color: AppColors.overdue),
+              title: const Text('Delete class',
+                  style: TextStyle(color: AppColors.overdue)),
               onTap: () => Navigator.pop(ctx, 'delete'),
             ),
           ],
@@ -93,7 +96,8 @@ class ScheduleScreen extends StatelessWidget {
     }
   }
 
-  Future<void> _confirmDelete(BuildContext context, String termId, String classId) async {
+  Future<void> _confirmDelete(
+      BuildContext context, String termId, String classId) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -101,7 +105,9 @@ class ScheduleScreen extends StatelessWidget {
         title: const Text('Delete class?'),
         content: const Text('This cannot be undone.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppColors.overdue),
             onPressed: () => Navigator.pop(ctx, true),
@@ -141,13 +147,16 @@ class ScheduleScreen extends StatelessWidget {
                   : StreamBuilder<List<ClassSession>>(
                       stream: firestoreService.watchClasses(termId),
                       builder: (context, snapshot) {
-                        if (snapshot.connectionState == ConnectionState.waiting) {
-                          return const Center(child: CircularProgressIndicator());
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const Center(
+                              child: CircularProgressIndicator());
                         }
                         final classes = snapshot.data ?? [];
                         if (classes.isEmpty) {
                           return _EmptyScheduleCard(
-                            onAddClass: () => _openAddForm(context, termId, classes),
+                            onAddClass: () =>
+                                _openAddForm(context, termId, classes),
                           );
                         }
                         return Padding(
@@ -161,8 +170,8 @@ class ScheduleScreen extends StatelessWidget {
                             padding: const EdgeInsets.all(12),
                             child: WeeklyGrid(
                               classes: classes,
-                              onTapClass: (session) =>
-                                  _openEditForm(context, termId, session, classes),
+                              onTapClass: (session) => _openEditForm(
+                                  context, termId, session, classes),
                             ),
                           ),
                         );
@@ -212,7 +221,10 @@ class _ScheduleHeader extends StatelessWidget {
               padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
               child: Text(
                 'Time Format',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: AppColors.textDark),
+                style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                    color: AppColors.textDark),
               ),
             ),
             RadioListTile<bool>(
@@ -243,34 +255,39 @@ class _ScheduleHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        const Text(
-          'Class Schedule',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
-            color: AppColors.navyDark,
-            letterSpacing: 0.2,
+      children: [       
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(
+            'Class Schedule',
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+              color: AppColors.navyDark,
+              letterSpacing: 0.2,
+            ),
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
           ),
         ),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.access_time_rounded, color: AppColors.navyDark),
-              tooltip: 'Time format',
-              onPressed: () => _showTimeFormatPicker(context),
+        IconButton(
+          icon: const Icon(Icons.access_time_rounded, color: AppColors.navyDark),
+          tooltip: 'Time format',
+          visualDensity: VisualDensity.compact,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+          onPressed: () => _showTimeFormatPicker(context),
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: AppColors.pillLavender,
+              borderRadius: BorderRadius.circular(20),
             ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: AppColors.pillLavender,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const TermSelector(),
-            ),
-          ],
+            child: const TermSelector(),
+          ),
         ),
       ],
     );
@@ -301,7 +318,10 @@ class _NoTermCard extends StatelessWidget {
             SizedBox(height: 16),
             Text(
               'No term selected',
-              style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800),
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800),
             ),
             SizedBox(height: 6),
             Text(
@@ -336,12 +356,16 @@ class _EmptyScheduleCard extends StatelessWidget {
                 color: AppColors.pillLavender,
                 borderRadius: BorderRadius.circular(24),
               ),
-              child: const Icon(Icons.event_busy_rounded, size: 40, color: AppColors.navyDark),
+              child: const Icon(Icons.event_busy_rounded,
+                  size: 40, color: AppColors.navyDark),
             ),
             const SizedBox(height: 20),
             const Text(
               'No classes yet',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textDark),
+              style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textDark),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),

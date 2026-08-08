@@ -57,11 +57,11 @@ class TermSelector extends StatelessWidget {
                 color: hasTerms ? AppColors.navyDark : AppColors.textMuted,
               ),
               const SizedBox(width: 6),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 140),
+              Flexible(
                 child: Text(
                   selected?.name ?? 'No terms yet',
                   overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
