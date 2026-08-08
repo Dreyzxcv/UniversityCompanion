@@ -6,6 +6,7 @@ import '../theme/app_theme.dart';
 import '../../schedule/schedule_screen.dart';
 import '../../qpi_calculator/qpi_screen.dart';
 import 'home_screen.dart';
+import '../../tasks/tasks_screen.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -27,6 +28,7 @@ class _MainShellState extends State<MainShell> {
   static const _tabs = [
     _NavTab(Icons.home_outlined, Icons.home_rounded, 'Home'),
     _NavTab(Icons.calendar_month_outlined, Icons.calendar_month_rounded, 'Schedule'),
+    _NavTab(Icons.assignment_outlined, Icons.assignment_rounded, 'Tasks'),
     _NavTab(Icons.calculate_outlined, Icons.calculate_rounded, 'QPI Calc'),
   ];
 
@@ -43,6 +45,7 @@ class _MainShellState extends State<MainShell> {
           children: const [
             HomeScreen(),
             ScheduleScreen(),
+            TasksScreen(),
             QpiScreen(),
           ],
         ),
