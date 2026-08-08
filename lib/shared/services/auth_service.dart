@@ -51,6 +51,18 @@ class AuthService {
     return _auth.sendPasswordResetEmail(email: email);
   }
 
+  Future<void> updateProfile({
+    required String name,
+    required String school,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+    await _db.collection('users').doc(user.uid).update({
+      'name': name,
+      'school': school,
+    });
+  }
+
   Future<void> reloadAndSyncVerification() async {
     final user = _auth.currentUser;
     if (user == null) return;
