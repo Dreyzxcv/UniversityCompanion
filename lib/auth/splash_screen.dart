@@ -23,7 +23,7 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
-  static const _title = 'CAMPUS COMPANION';
+  static const _title = 'UNIVERSITY COMPANION';
 
   late final AnimationController _controller;
 
