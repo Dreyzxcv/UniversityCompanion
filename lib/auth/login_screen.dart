@@ -21,6 +21,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordCtrl = TextEditingController();
 
   bool _loading = false;
+  bool _googleLoading = false;
   bool _showEmailForm = false;
   String? _error;
 
@@ -93,6 +94,29 @@ class _LoginScreenState extends State<LoginScreen> {
       _showEmailForm = false;
       _error = null;
     });
+  }
+
+  Future<void> _signInWithGoogle() async {
+    setState(() {
+      _googleLoading = true;
+      _error = null;
+    });
+    try {
+      final auth = context.read<AuthService>();
+      final result = await auth.signInWithGoogle();
+      // result == null means the user closed the picker — not an error.
+      // AuthGate listens to authStateChanges and routes on success.
+      if (result == null && mounted) {
+        setState(() => _googleLoading = false);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = 'Could not sign in with Google. Please try again.';
+          _googleLoading = false;
+        });
+      }
+    }
   }
 
   @override
@@ -205,8 +229,16 @@ class _LoginScreenState extends State<LoginScreen> {
           svgIcon: 'lib/images/google.svg',
           label: 'Continue with Google',
           filled: false,
-          onTap: () => _comingSoon('Google'),
+          onTap: _googleLoading ? null : _signInWithGoogle,
         ),
+        if (_googleLoading) ...[
+          const SizedBox(height: 12),
+          const Center(child: SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))),
+        ],
+        if (_error != null) ...[
+          const SizedBox(height: 12),
+          Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.overdue, fontSize: 13)),
+        ],
 
         const SizedBox(height: 32),
 
@@ -429,7 +461,7 @@ class _ChoiceButton extends StatelessWidget {
   final String? svgIcon;
   final String label;
   final bool filled;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   const _ChoiceButton({
     this.icon,

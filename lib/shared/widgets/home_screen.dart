@@ -8,6 +8,7 @@ import '../services/firestore_service.dart';
 import '../services/term_controller.dart';
 import '../theme/app_theme.dart';
 import '../../profile/profile_screen.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -90,7 +91,14 @@ class _TopBar extends StatelessWidget {
               child: Wrap(children: [
                 ListTile(
                   leading: const Icon(Icons.person_outline_rounded, color: AppColors.navyDark),
-                  title: const Text('My Profile'),
+                  title: const Text(
+                    'My Profile',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      color: AppColors.textDark,
+                    ),
+                  ),
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.push(
@@ -100,8 +108,20 @@ class _TopBar extends StatelessWidget {
                   },
                 ),
                 ListTile(
-                  leading: const Icon(Icons.logout_rounded, color: AppColors.overdue),
-                  title: const Text('Log out'),
+                  leading: SvgPicture.asset(
+                    'lib/images/logout.svg',
+                    width: 22,
+                    height: 22,
+                    colorFilter: const ColorFilter.mode(AppColors.overdue, BlendMode.srcIn),
+                  ),
+                  title: const Text(
+                    'Log out',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      color: AppColors.overdue,
+                    ),
+                  ),
                   onTap: () {
                     Navigator.pop(context);
                     onLogout();
