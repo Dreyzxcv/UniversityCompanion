@@ -1,4 +1,4 @@
-# Campus Companion (MVP)
+# University Companion (MVP)
 
 Flutter + Firebase app for Philippine university students. This MVP covers
 two features only: **Class Schedule** and **QPI Calculator**.
