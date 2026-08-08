@@ -12,7 +12,20 @@
           "package_name": "com.example.university_companion_app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "31768369064-1u276g5rvrfhvlpbkg25tsjq5399g2l5.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.university_companion_app",
+            "certificate_hash": "38d03787abe5e819a1f66d3f444dd8a808432a09"
+          }
+        },
+        {
+          "client_id": "31768369064-tn7237npp26pb7sdqd1v3kom3vugjnjn.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAwG5XjKBGBQdGgNJcOOPveFKvZyOkl6tg"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "31768369064-tn7237npp26pb7sdqd1v3kom3vugjnjn.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "31768369064-p9vhe4eit442v2502a2dsc4iharufuj1.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.universityCompanionApp"
+              }
+            }
+          ]
         }
       }
     }
