@@ -7,6 +7,7 @@ import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../services/term_controller.dart';
 import '../theme/app_theme.dart';
+import '../../profile/profile_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -87,6 +88,17 @@ class _TopBar extends StatelessWidget {
             ),
             builder: (_) => SafeArea(
               child: Wrap(children: [
+                ListTile(
+                  leading: const Icon(Icons.person_outline_rounded, color: AppColors.navyDark),
+                  title: const Text('My Profile'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                    );
+                  },
+                ),
                 ListTile(
                   leading: const Icon(Icons.logout_rounded, color: AppColors.overdue),
                   title: const Text('Log out'),
