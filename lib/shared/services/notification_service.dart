@@ -4,6 +4,7 @@ import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz_data;
 import '../models/class_session.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
+import '../models/task_item.dart';
 
 class NotificationService {
   NotificationService._();
@@ -179,6 +180,44 @@ class NotificationService {
 
     return null;
   }
+
+  Future<void> scheduleTaskReminder(TaskItem task) async {
+    if (task.isCompleted) {
+      await cancelTaskReminder(task.id);
+      return;
+    }
+
+    final due = task.dueDate;
+    final reminderTime = tz.TZDateTime(tz.local, due.year, due.month, due.day, 18)
+        .subtract(const Duration(days: 1));
+
+    if (reminderTime.isBefore(tz.TZDateTime.now(tz.local))) return;
+
+    await _plugin.zonedSchedule(
+      id: _taskNotificationId(task.id),
+      title: '${task.type.label} due tomorrow',
+      body: task.title,
+      scheduledDate: reminderTime,
+      notificationDetails: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          _channelId,
+          _channelName,
+          channelDescription: _channelDescription,
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+        iOS: DarwinNotificationDetails(),
+      ),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+    );
+  }
+
+  Future<void> cancelTaskReminder(String taskId) {
+    return _plugin.cancel(id: _taskNotificationId(taskId));
+  }
+
+  int _taskNotificationId(String taskId) =>
+      ('task_$taskId').hashCode & 0x7fffffff;
 
   @visibleForTesting
   int notificationIdForTest(String classId) => _notificationId(classId);

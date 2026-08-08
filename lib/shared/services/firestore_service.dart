@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/term.dart';
 import '../models/class_session.dart';
 import '../models/grade_record.dart';
+import '../models/task_item.dart';
 
 /// All reads/writes to `users/{uid}/terms/...` live here so the schedule
 /// and QPI features don't each hand-roll Firestore paths.
@@ -55,12 +56,16 @@ class FirestoreService {
   Future<void> deleteTerm(String termId) async {
     final classesSnap = await _classes(termId).get();
     final gradesSnap = await _grades(termId).get();
+    final tasksSnap = await _tasks(termId).get();
 
     final batch = _db.batch();
     for (final doc in classesSnap.docs) {
       batch.delete(doc.reference);
     }
     for (final doc in gradesSnap.docs) {
+      batch.delete(doc.reference);
+    }
+    for (final doc in tasksSnap.docs) {
       batch.delete(doc.reference);
     }
     batch.delete(_terms.doc(termId));
@@ -104,6 +109,9 @@ class FirestoreService {
     return _classes(termId).doc(classId).delete();
   }
 
+  CollectionReference<Map<String, dynamic>> _tasks(String termId) =>
+      _terms.doc(termId).collection('tasks');
+
   // ---------------- Grades (QPI) ----------------
 
   Stream<List<GradeRecord>> watchGrades(String termId) {
@@ -143,5 +151,27 @@ class FirestoreService {
       });
     }
     return results;
+  }
+
+  // ---------------- Tasks ----------------
+
+  Stream<List<TaskItem>> watchTasks(String termId) {
+    return _tasks(termId).orderBy('dueDate').snapshots().map(
+          (snap) => snap.docs
+              .map((d) => TaskItem.fromMap(d.id, d.data()))
+              .toList(),
+        );
+  }
+
+  Future<void> addTask(String termId, TaskItem task) {
+    return _tasks(termId).add(task.toMap());
+  }
+
+  Future<void> updateTask(String termId, TaskItem task) {
+    return _tasks(termId).doc(task.id).update(task.toMap());
+  }
+
+  Future<void> deleteTask(String termId, String taskId) {
+    return _tasks(termId).doc(taskId).delete();
   }
 }
