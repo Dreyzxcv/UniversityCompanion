@@ -5,6 +5,7 @@ import '../shared/services/firestore_service.dart';
 import '../shared/services/term_controller.dart';
 import '../shared/theme/app_theme.dart';
 import '../shared/widgets/term_selector.dart';
+import '../shared/services/notification_service.dart';
 import 'class_form_screen.dart';
 import 'weekly_grid.dart';
 
@@ -24,6 +25,8 @@ class ScheduleScreen extends StatelessWidget {
     );
     if (result != null && context.mounted) {
       await context.read<FirestoreService>().addClass(termId, result.session);
+      await NotificationService.instance.requestPermission();
+      await NotificationService.instance.scheduleClassReminder(result.session);
     }
   }
 
@@ -67,14 +70,14 @@ class ScheduleScreen extends StatelessWidget {
       ),
     );
 
-    // Fallback: if the form already produced a result, just save it
-    // directly rather than forcing a second confirmation for the common case.
     if (action == null) {
       await context.read<FirestoreService>().updateClass(termId, result.session);
+      await NotificationService.instance.scheduleClassReminder(result.session);
       return;
     }
     if (action == 'save') {
       await context.read<FirestoreService>().updateClass(termId, result.session);
+      await NotificationService.instance.scheduleClassReminder(result.session);
     } else if (action == 'delete' && context.mounted) {
       await _confirmDelete(context, termId, existing.id);
     }
@@ -99,6 +102,7 @@ class ScheduleScreen extends StatelessWidget {
     );
     if (confirmed == true && context.mounted) {
       await context.read<FirestoreService>().deleteClass(termId, classId);
+      await NotificationService.instance.cancelClassReminder(classId);
     }
   }
 

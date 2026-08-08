@@ -7,10 +7,12 @@ import 'shared/services/auth_service.dart';
 import 'shared/theme/app_theme.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'shared/services/notification_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await NotificationService.instance.init();
 
   if (kIsWeb) {
     FirebaseFirestore.instance.settings = const Settings(
@@ -29,7 +31,7 @@ class UniversityCompanionApp extends StatelessWidget {
     return Provider<AuthService>(
       create: (_) => AuthService(),
       child: MaterialApp(
-        title: 'Campus Companion',
+        title: 'University Companion',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.themeData,
         home: const SplashScreen(),
