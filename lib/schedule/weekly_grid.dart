@@ -2,10 +2,19 @@ import 'package:flutter/material.dart';
 import '../shared/models/class_session.dart';
 
 const double _hourHeight = 64;
-const int _startHour = 7; // 7am
-const int _endHour = 20; // 8pm
 const double _dayColumnWidth = 120;
 const double _timeColumnWidth = 52;
+
+// Fallback range used only when there are no classes at all to derive a
+// range from (WeeklyGrid is normally only built once classes.isNotEmpty,
+// but keep a sane default just in case).
+const int _fallbackStartHour = 7; // 7am
+const int _fallbackEndHour = 20; // 8pm
+
+// Padding (in whole hours) added before the earliest class and after the
+// latest one, so a block doesn't sit flush against the very top/bottom
+// edge of the grid.
+const int _hourPadding = 1;
 
 /// Calendar-style weekly grid, Monday-Saturday, time on the vertical axis.
 /// Each class renders as a positioned colored block sized to its duration.
@@ -14,6 +23,11 @@ const double _timeColumnWidth = 52;
 /// column stays pinned on the left, no matter how far the grid body has
 /// been scrolled — otherwise a block far down/right (like a single
 /// afternoon lab) has no visible reference for which day or time it's in.
+///
+/// The visible hour range is also derived from the actual classes rather
+/// than a fixed 7am–8pm span: if every class for the term falls between
+/// 1pm and 3pm, there's no reason to render (and force scrolling through)
+/// empty rows from 7am–12pm and 4pm–8pm.
 class WeeklyGrid extends StatefulWidget {
   final List<ClassSession> classes;
   final void Function(ClassSession) onTapClass;
@@ -79,9 +93,34 @@ class _WeeklyGridState extends State<WeeklyGrid> {
     super.dispose();
   }
 
+  /// Earliest class-start hour and latest class-end hour across the whole
+  /// week (all days combined, since every day shares the same vertical
+  /// axis), padded by [_hourPadding] on each side and clamped to a valid
+  /// 0–24 range. Recomputed on every build so it stays in sync as classes
+  /// are added/edited/removed.
+  (int start, int end) get _hourRange {
+    if (widget.classes.isEmpty) {
+      return (_fallbackStartHour, _fallbackEndHour);
+    }
+
+    var minStartHour = 24;
+    var maxEndHour = 0;
+    for (final session in widget.classes) {
+      final startHour = session.startMinutes ~/ 60;
+      final endHour = (session.endMinutes / 60).ceil();
+      if (startHour < minStartHour) minStartHour = startHour;
+      if (endHour > maxEndHour) maxEndHour = endHour;
+    }
+
+    final start = (minStartHour - _hourPadding).clamp(0, 23);
+    final end = (maxEndHour + _hourPadding).clamp(start + 1, 24);
+    return (start, end);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final totalHeight = (_endHour - _startHour) * _hourHeight;
+    final (startHour, endHour) = _hourRange;
+    final totalHeight = (endHour - startHour) * _hourHeight;
     final totalWidth = _dayColumnWidth * kWeekDays.length;
 
     return Column(
@@ -113,7 +152,7 @@ class _WeeklyGridState extends State<WeeklyGrid> {
                 child: SingleChildScrollView(
                   controller: _timeVertical,
                   physics: const NeverScrollableScrollPhysics(),
-                  child: _buildTimeLines(totalHeight),
+                  child: _buildTimeLines(startHour, endHour, totalHeight),
                 ),
               ),
               Expanded(
@@ -128,8 +167,8 @@ class _WeeklyGridState extends State<WeeklyGrid> {
                       height: totalHeight,
                       child: Stack(
                         children: [
-                          _buildDayColumns(totalHeight),
-                          ...widget.classes.map(_buildClassBlock),
+                          _buildDayColumns(startHour, endHour, totalHeight),
+                          ...widget.classes.map((s) => _buildClassBlock(s, startHour)),
                         ],
                       ),
                     ),
@@ -159,14 +198,14 @@ class _WeeklyGridState extends State<WeeklyGrid> {
     );
   }
 
-  Widget _buildTimeLines(double totalHeight) {
-    final hours = _endHour - _startHour;
+  Widget _buildTimeLines(int startHour, int endHour, double totalHeight) {
+    final hours = endHour - startHour;
     return SizedBox(
       width: _timeColumnWidth,
       height: totalHeight,
       child: Column(
         children: List.generate(hours, (i) {
-          final hour = _startHour + i;
+          final hour = startHour + i;
           final label = hour <= 12 ? '$hour${hour == 12 ? 'pm' : 'am'}' : '${hour - 12}pm';
           return SizedBox(
             height: _hourHeight,
@@ -180,7 +219,7 @@ class _WeeklyGridState extends State<WeeklyGrid> {
     );
   }
 
-  Widget _buildDayColumns(double totalHeight) {
+  Widget _buildDayColumns(int startHour, int endHour, double totalHeight) {
     return Positioned(
       left: 0,
       top: 0,
@@ -193,7 +232,7 @@ class _WeeklyGridState extends State<WeeklyGrid> {
               border: Border(left: BorderSide(color: Colors.grey.shade300)),
             ),
             child: Column(
-              children: List.generate(_endHour - _startHour, (_) {
+              children: List.generate(endHour - startHour, (_) {
                 return Container(
                   height: _hourHeight,
                   decoration: BoxDecoration(
@@ -208,11 +247,11 @@ class _WeeklyGridState extends State<WeeklyGrid> {
     );
   }
 
-  Widget _buildClassBlock(ClassSession session) {
+  Widget _buildClassBlock(ClassSession session, int startHour) {
     final dayIndex = kWeekDays.indexOf(session.day);
     if (dayIndex == -1) return const SizedBox.shrink();
 
-    final top = ((session.startMinutes - _startHour * 60) / 60) * _hourHeight;
+    final top = ((session.startMinutes - startHour * 60) / 60) * _hourHeight;
     final height = ((session.endMinutes - session.startMinutes) / 60) * _hourHeight;
 
     return Positioned(

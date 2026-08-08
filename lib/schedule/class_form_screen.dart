@@ -249,7 +249,7 @@ class _ClassFormScreenState extends State<ClassFormScreen> {
                       Expanded(
                         child: TextFormField(
                           controller: _sectionCtrl,
-                          decoration: const InputDecoration(labelText: 'Section'),
+                          decoration: const InputDecoration(labelText: 'Section/Block'),
                         ),
                       ),
                       const SizedBox(width: 12),
