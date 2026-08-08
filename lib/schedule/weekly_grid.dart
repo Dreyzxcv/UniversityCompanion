@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import '../shared/models/class_session.dart';
+import 'package:provider/provider.dart';
+import '../shared/services/time_format_controller.dart';
+import '../shared/utils/time_format.dart';
 
 const double _hourHeight = 64;
 const double _dayColumnWidth = 120;
@@ -119,6 +122,7 @@ class _WeeklyGridState extends State<WeeklyGrid> {
 
   @override
   Widget build(BuildContext context) {
+    final is24Hour = context.watch<TimeFormatController>().is24Hour;
     final (startHour, endHour) = _hourRange;
     final totalHeight = (endHour - startHour) * _hourHeight;
     final totalWidth = _dayColumnWidth * kWeekDays.length;
@@ -152,7 +156,7 @@ class _WeeklyGridState extends State<WeeklyGrid> {
                 child: SingleChildScrollView(
                   controller: _timeVertical,
                   physics: const NeverScrollableScrollPhysics(),
-                  child: _buildTimeLines(startHour, endHour, totalHeight),
+                  child: _buildTimeLines(startHour, endHour, totalHeight, is24Hour)
                 ),
               ),
               Expanded(
@@ -168,7 +172,7 @@ class _WeeklyGridState extends State<WeeklyGrid> {
                       child: Stack(
                         children: [
                           _buildDayColumns(startHour, endHour, totalHeight),
-                          ...widget.classes.map((s) => _buildClassBlock(s, startHour)),
+                          ...widget.classes.map((s) => _buildClassBlock(s, startHour, is24Hour)),
                         ],
                       ),
                     ),
@@ -198,7 +202,7 @@ class _WeeklyGridState extends State<WeeklyGrid> {
     );
   }
 
-  Widget _buildTimeLines(int startHour, int endHour, double totalHeight) {
+  Widget _buildTimeLines(int startHour, int endHour, double totalHeight, bool is24Hour) {
     final hours = endHour - startHour;
     return SizedBox(
       width: _timeColumnWidth,
@@ -206,7 +210,7 @@ class _WeeklyGridState extends State<WeeklyGrid> {
       child: Column(
         children: List.generate(hours, (i) {
           final hour = startHour + i;
-          final label = hour <= 12 ? '$hour${hour == 12 ? 'pm' : 'am'}' : '${hour - 12}pm';
+          final label = formatTimeOfDay('${hour.toString().padLeft(2, '0')}:00', is24Hour: is24Hour);
           return SizedBox(
             height: _hourHeight,
             child: Align(
@@ -247,7 +251,7 @@ class _WeeklyGridState extends State<WeeklyGrid> {
     );
   }
 
-  Widget _buildClassBlock(ClassSession session, int startHour) {
+  Widget _buildClassBlock(ClassSession session, int startHour, bool is24Hour) {
     final dayIndex = kWeekDays.indexOf(session.day);
     if (dayIndex == -1) return const SizedBox.shrink();
 
@@ -267,20 +271,32 @@ class _WeeklyGridState extends State<WeeklyGrid> {
             color: session.colorValue,
             borderRadius: BorderRadius.circular(10),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                session.subjectCode,
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                overflow: TextOverflow.ellipsis,
-              ),
-              if (session.section.isNotEmpty)
-                Text(session.section, style: const TextStyle(fontSize: 11), overflow: TextOverflow.ellipsis),
-              if (session.room.isNotEmpty)
-                Text(session.room, style: const TextStyle(fontSize: 10), overflow: TextOverflow.ellipsis),
-            ],
+          child: SingleChildScrollView(
+            physics: const NeverScrollableScrollPhysics(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(session.subjectCode,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                    overflow: TextOverflow.ellipsis),
+                if (session.subjectName.isNotEmpty)
+                  Text(session.subjectName,
+                      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
+                      overflow: TextOverflow.ellipsis, maxLines: 2),
+                if (session.professor.isNotEmpty)
+                  Text(session.professor,
+                      style: const TextStyle(fontSize: 10), overflow: TextOverflow.ellipsis),
+                if (session.room.isNotEmpty)
+                  Text(session.room,
+                      style: const TextStyle(fontSize: 10), overflow: TextOverflow.ellipsis),
+                Text(
+                  formatTimeRange(session.startTime, session.endTime, is24Hour: is24Hour),
+                  style: const TextStyle(fontSize: 10),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
           ),
         ),
       ),

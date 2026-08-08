@@ -9,6 +9,9 @@ import '../services/term_controller.dart';
 import '../theme/app_theme.dart';
 import '../../profile/profile_screen.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:provider/provider.dart';
+import '../services/time_format_controller.dart';
+import '../utils/time_format.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -17,7 +20,6 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final auth = context.read<AuthService>();
     final user = auth.currentUser;
-    final firstName = user?.email != null ? user!.email!.split('@').first : 'there';
     final termController = context.watch<TermController>();
     final firestoreService = context.read<FirestoreService>();
     final termId = termController.selectedTermId;
@@ -33,20 +35,8 @@ class HomeScreen extends StatelessWidget {
             const SizedBox(height: 16),
             if (user != null) _SchoolCard(uid: user.uid),
             const SizedBox(height: 20),
-            Row(
-              children: [
-                Text(
-                  'Hi, $firstName',
-                  style: const TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textDark,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                const Icon(Icons.verified_rounded, color: AppColors.navyMid, size: 22),
-              ],
-            ),
+            if (user != null)
+              _GreetingRow(uid: user.uid, fallbackEmail: user.email),
             const SizedBox(height: 20),
             termId == null
                 ? const _NoTermHero()
@@ -71,9 +61,80 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
+class _GreetingRow extends StatelessWidget {
+  final String uid;
+  final String? fallbackEmail;
+  const _GreetingRow({required this.uid, this.fallbackEmail});
+
+  String _firstNameFrom(String fullName) {
+    final trimmed = fullName.trim();
+    if (trimmed.isEmpty) return '';
+    return trimmed.split(RegExp(r'\s+')).first;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      future: FirebaseFirestore.instance.collection('users').doc(uid).get(),
+      builder: (context, snapshot) {
+        final fullName = snapshot.data?.data()?['name'] as String?;
+        final resolvedFirstName =
+            (fullName != null && fullName.trim().isNotEmpty)
+                ? _firstNameFrom(fullName)
+                : (fallbackEmail != null
+                    ? fallbackEmail!.split('@').first
+                    : 'there');
+
+        return Row(
+          children: [
+            Text(
+              'Hi, $resolvedFirstName',
+              style: const TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w800,
+                color: AppColors.textDark,
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Icon(Icons.verified_rounded,
+                color: AppColors.navyMid, size: 22),
+          ],
+        );
+      },
+    );
+  }
+}
+
 class _TopBar extends StatelessWidget {
   final VoidCallback onLogout;
   const _TopBar({required this.onLogout});
+
+  Future<void> _confirmLogout(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Log out?'),
+        content: const Text(
+          'You\'ll need to sign in again to access your schedule and QPI records.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.overdue),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Log out'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      onLogout();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -90,7 +151,8 @@ class _TopBar extends StatelessWidget {
             builder: (_) => SafeArea(
               child: Wrap(children: [
                 ListTile(
-                  leading: const Icon(Icons.person_outline_rounded, color: AppColors.navyDark),
+                  leading: const Icon(Icons.person_outline_rounded,
+                      color: AppColors.navyDark),
                   title: const Text(
                     'My Profile',
                     style: TextStyle(
@@ -112,7 +174,8 @@ class _TopBar extends StatelessWidget {
                     'lib/images/logout.svg',
                     width: 22,
                     height: 22,
-                    colorFilter: const ColorFilter.mode(AppColors.overdue, BlendMode.srcIn),
+                    colorFilter: const ColorFilter.mode(
+                        AppColors.overdue, BlendMode.srcIn),
                   ),
                   title: const Text(
                     'Log out',
@@ -123,8 +186,8 @@ class _TopBar extends StatelessWidget {
                     ),
                   ),
                   onTap: () {
-                    Navigator.pop(context);
-                    onLogout();
+                    Navigator.pop(context); // close the sheet first
+                    _confirmLogout(context); // then ask for confirmation
                   },
                 ),
               ]),
@@ -227,13 +290,17 @@ class _SchoolCard extends StatelessWidget {
                   color: AppColors.pillLavender,
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: const Icon(Icons.account_balance_rounded, color: AppColors.navyDark),
+                child: const Icon(Icons.account_balance_rounded,
+                    color: AppColors.navyDark),
               ),
               const SizedBox(width: 14),
               Expanded(
-                child: Text(school, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                child: Text(school,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 15)),
               ),
-              const Icon(Icons.verified_rounded, color: AppColors.navyMid, size: 20),
+              const Icon(Icons.verified_rounded,
+                  color: AppColors.navyMid, size: 20),
             ],
           ),
         );
@@ -252,13 +319,15 @@ class _NextClassHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final now = DateTime.now();
     const dayCodes = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+    final is24Hour = context.watch<TimeFormatController>().is24Hour;
     final todayCode = dayCodes[now.weekday - 1];
     final nowMinutes = now.hour * 60 + now.minute;
 
     final todays = classes.where((c) => c.day == todayCode).toList()
       ..sort((a, b) => a.startMinutes.compareTo(b.startMinutes));
 
-    final ongoing = todays.where((c) => c.startMinutes <= nowMinutes && nowMinutes < c.endMinutes);
+    final ongoing = todays.where(
+        (c) => c.startMinutes <= nowMinutes && nowMinutes < c.endMinutes);
     final upcoming = todays.where((c) => c.startMinutes > nowMinutes);
     final current = ongoing.isNotEmpty ? ongoing.first : null;
     final next = current ?? (upcoming.isNotEmpty ? upcoming.first : null);
@@ -267,13 +336,16 @@ class _NextClassHero extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(gradient: AppColors.heroGradient, borderRadius: BorderRadius.circular(28)),
+      decoration: BoxDecoration(
+          gradient: AppColors.heroGradient,
+          borderRadius: BorderRadius.circular(28)),
       child: Stack(
         children: [
           Positioned(
             right: -10,
             top: -6,
-            child: Icon(Icons.graphic_eq_rounded, size: 90, color: Colors.white.withOpacity(0.08)),
+            child: Icon(Icons.graphic_eq_rounded,
+                size: 90, color: Colors.white.withOpacity(0.08)),
           ),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -282,7 +354,8 @@ class _NextClassHero extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.14),
                       borderRadius: BorderRadius.circular(20),
@@ -294,11 +367,15 @@ class _NextClassHero extends StatelessWidget {
                         const SizedBox(width: 8),
                         Text(statusLabel,
                             style: const TextStyle(
-                                color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12, letterSpacing: 0.5)),
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 12,
+                                letterSpacing: 0.5)),
                       ],
                     ),
                   ),
-                  const Icon(Icons.arrow_forward_rounded, color: Colors.white70),
+                  const Icon(Icons.arrow_forward_rounded,
+                      color: Colors.white70),
                 ],
               ),
               const SizedBox(height: 28),
@@ -308,19 +385,27 @@ class _NextClassHero extends StatelessWidget {
                     : current != null
                         ? 'Ends at ${next.endTime}'
                         : 'Next class ${next.startTime}',
-                style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w800),
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 26,
+                    fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 6),
               Text(
                 next == null ? 'Enjoy your day!' : 'Next: ${next.subjectCode}',
-                style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 15),
+                style: TextStyle(
+                    color: Colors.white.withOpacity(0.85), fontSize: 15),
               ),
               if (next != null) ...[
                 const SizedBox(height: 20),
-                _HeroChip(icon: Icons.access_time_rounded, label: '${next.startTime} - ${next.endTime}'),
+                _HeroChip(
+                    icon: Icons.access_time_rounded,
+                    label: formatTimeRange(next.startTime, next.endTime,
+                        is24Hour: is24Hour)),
                 if (next.room.isNotEmpty) ...[
                   const SizedBox(height: 10),
-                  _HeroChip(icon: Icons.door_front_door_outlined, label: next.room),
+                  _HeroChip(
+                      icon: Icons.door_front_door_outlined, label: next.room),
                 ],
               ],
             ],
@@ -341,12 +426,16 @@ class _HeroChip extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(color: Colors.white.withOpacity(0.12), borderRadius: BorderRadius.circular(16)),
+      decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(16)),
       child: Row(
         children: [
           Icon(icon, color: Colors.white, size: 18),
           const SizedBox(width: 10),
-          Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+          Text(label,
+              style: const TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.w700)),
         ],
       ),
     );
@@ -361,10 +450,13 @@ class _NoTermHero extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(gradient: AppColors.heroGradient, borderRadius: BorderRadius.circular(28)),
+      decoration: BoxDecoration(
+          gradient: AppColors.heroGradient,
+          borderRadius: BorderRadius.circular(28)),
       child: const Text(
         'Create a term to see your schedule here.',
-        style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+        style: TextStyle(
+            color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
       ),
     );
   }
@@ -378,10 +470,13 @@ class _UpcomingCard extends StatelessWidget {
   Widget build(BuildContext context) {
     const dayCodes = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
     final now = DateTime.now();
+    final is24Hour = context.watch<TimeFormatController>().is24Hour;
     final todayCode = dayCodes[now.weekday - 1];
     final nowMinutes = now.hour * 60 + now.minute;
 
-    final items = (classes.where((c) => c.day == todayCode && c.startMinutes > nowMinutes).toList()
+    final items = (classes
+            .where((c) => c.day == todayCode && c.startMinutes > nowMinutes)
+            .toList()
           ..sort((a, b) => a.startMinutes.compareTo(b.startMinutes)))
         .take(3)
         .toList();
@@ -401,22 +496,30 @@ class _UpcomingCard extends StatelessWidget {
               Container(
                 width: 40,
                 height: 40,
-                decoration: BoxDecoration(color: AppColors.pillLavender, borderRadius: BorderRadius.circular(12)),
-                child: const Icon(Icons.calendar_month_rounded, color: AppColors.navyDark, size: 20),
+                decoration: BoxDecoration(
+                    color: AppColors.pillLavender,
+                    borderRadius: BorderRadius.circular(12)),
+                child: const Icon(Icons.calendar_month_rounded,
+                    color: AppColors.navyDark, size: 20),
               ),
               const SizedBox(width: 12),
               const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text("Today's Classes", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-                  Text('Rest of the day', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                  Text("Today's Classes",
+                      style:
+                          TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                  Text('Rest of the day',
+                      style:
+                          TextStyle(color: AppColors.textMuted, fontSize: 12)),
                 ],
               ),
             ],
           ),
           const SizedBox(height: 16),
           if (items.isEmpty)
-            const Text('Nothing else scheduled today.', style: TextStyle(color: AppColors.textMuted))
+            const Text('Nothing else scheduled today.',
+                style: TextStyle(color: AppColors.textMuted))
           else
             ...items.map((c) => Padding(
                   padding: const EdgeInsets.only(bottom: 12),
@@ -425,7 +528,9 @@ class _UpcomingCard extends StatelessWidget {
                       Container(
                         width: 36,
                         height: 36,
-                        decoration: BoxDecoration(color: c.colorValue, borderRadius: BorderRadius.circular(10)),
+                        decoration: BoxDecoration(
+                            color: c.colorValue,
+                            borderRadius: BorderRadius.circular(10)),
                         child: const Icon(Icons.schedule_rounded, size: 18),
                       ),
                       const SizedBox(width: 12),
@@ -433,10 +538,13 @@ class _UpcomingCard extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(c.subjectCode, style: const TextStyle(fontWeight: FontWeight.w700)),
+                            Text(c.subjectCode,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w700)),
                             Text(
-                              '${c.startTime} - ${c.endTime}${c.room.isNotEmpty ? ' · ${c.room}' : ''}',
-                              style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                              '${formatTimeRange(c.startTime, c.endTime, is24Hour: is24Hour)}${c.room.isNotEmpty ? ' · ${c.room}' : ''}',
+                              style: const TextStyle(
+                                  color: AppColors.textMuted, fontSize: 12),
                             ),
                           ],
                         ),

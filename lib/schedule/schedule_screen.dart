@@ -8,6 +8,7 @@ import '../shared/widgets/term_selector.dart';
 import '../shared/services/notification_service.dart';
 import 'class_form_screen.dart';
 import 'weekly_grid.dart';
+import '../shared/services/time_format_controller.dart';
 
 class ScheduleScreen extends StatelessWidget {
   const ScheduleScreen({super.key});
@@ -194,10 +195,50 @@ class ScheduleScreen extends StatelessWidget {
   }
 }
 
-/// Title + term pill, styled to match HomeScreen's top bar: bold navy
-/// title, pastel lavender pill for the current term.
 class _ScheduleHeader extends StatelessWidget {
   const _ScheduleHeader();
+
+  Future<void> _showTimeFormatPicker(BuildContext context) async {
+    final controller = context.read<TimeFormatController>();
+    await showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => SafeArea(
+        child: Wrap(
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Text(
+                'Time Format',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: AppColors.textDark),
+              ),
+            ),
+            RadioListTile<bool>(
+              value: false,
+              groupValue: controller.is24Hour,
+              title: const Text('12-hour (e.g. 1:30 PM)'),
+              onChanged: (_) {
+                controller.setIs24Hour(false);
+                Navigator.pop(context);
+              },
+            ),
+            RadioListTile<bool>(
+              value: true,
+              groupValue: controller.is24Hour,
+              title: const Text('24-hour (e.g. 13:30)'),
+              onChanged: (_) {
+                controller.setIs24Hour(true);
+                Navigator.pop(context);
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -213,13 +254,23 @@ class _ScheduleHeader extends StatelessWidget {
             letterSpacing: 0.2,
           ),
         ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-          decoration: BoxDecoration(
-            color: AppColors.pillLavender,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: const TermSelector(),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.access_time_rounded, color: AppColors.navyDark),
+              tooltip: 'Time format',
+              onPressed: () => _showTimeFormatPicker(context),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: AppColors.pillLavender,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const TermSelector(),
+            ),
+          ],
         ),
       ],
     );

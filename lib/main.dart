@@ -8,6 +8,7 @@ import 'shared/theme/app_theme.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'shared/services/notification_service.dart';
+import 'shared/services/time_format_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,8 +29,13 @@ class UniversityCompanionApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Provider<AuthService>(
-      create: (_) => AuthService(),
+    return MultiProvider(
+      providers: [
+        Provider<AuthService>(create: (_) => AuthService()),
+        ChangeNotifierProvider<TimeFormatController>(
+          create: (_) => TimeFormatController(),
+        ),
+      ],
       child: MaterialApp(
         title: 'University Companion',
         debugShowCheckedModeBanner: false,
