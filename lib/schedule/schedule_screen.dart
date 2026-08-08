@@ -23,10 +23,15 @@ class ScheduleScreen extends StatelessWidget {
         builder: (_) => ClassFormScreen(allClassesInTerm: currentClasses),
       ),
     );
-    if (result != null && context.mounted) {
-      await context.read<FirestoreService>().addClass(termId, result.session);
-      await NotificationService.instance.requestPermission();
-      await NotificationService.instance.scheduleClassReminder(result.session);
+    if (result == null || !context.mounted) return;
+
+    final service = context.read<FirestoreService>();
+    await NotificationService.instance.requestPermission();
+    // One session per selected day (e.g. MON/THU) — write each as its
+    // own class doc and schedule its own reminder.
+    for (final session in result.sessions) {
+      await service.addClass(termId, session);
+      await NotificationService.instance.scheduleClassReminder(session);
     }
   }
 
@@ -46,6 +51,10 @@ class ScheduleScreen extends StatelessWidget {
       ),
     );
     if (result == null || !context.mounted) return;
+
+    // Editing always stays tied to the single doc being edited, so this
+    // is exactly one session regardless of the day picked.
+    final session = result.sessions.first;
 
     final action = await showModalBottomSheet<String>(
       context: context,
@@ -71,13 +80,13 @@ class ScheduleScreen extends StatelessWidget {
     );
 
     if (action == null) {
-      await context.read<FirestoreService>().updateClass(termId, result.session);
-      await NotificationService.instance.scheduleClassReminder(result.session);
+      await context.read<FirestoreService>().updateClass(termId, session);
+      await NotificationService.instance.scheduleClassReminder(session);
       return;
     }
     if (action == 'save') {
-      await context.read<FirestoreService>().updateClass(termId, result.session);
-      await NotificationService.instance.scheduleClassReminder(result.session);
+      await context.read<FirestoreService>().updateClass(termId, session);
+      await NotificationService.instance.scheduleClassReminder(session);
     } else if (action == 'delete' && context.mounted) {
       await _confirmDelete(context, termId, existing.id);
     }
@@ -124,7 +133,10 @@ class ScheduleScreen extends StatelessWidget {
             ),
             Expanded(
               child: termId == null
-                  ? const _NoTermCard()
+                  ? const Align(
+                      alignment: Alignment.topCenter,
+                      child: _NoTermCard(),
+                    )
                   : StreamBuilder<List<ClassSession>>(
                       stream: firestoreService.watchClasses(termId),
                       builder: (context, snapshot) {
@@ -231,6 +243,7 @@ class _NoTermCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(28),
         ),
         child: const Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon(Icons.calendar_month_rounded, color: Colors.white, size: 40),

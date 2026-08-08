@@ -4,11 +4,15 @@ import '../shared/models/class_session.dart';
 import '../shared/theme/app_theme.dart';
 import '../shared/widgets/color_palette.dart';
 
-/// Returned by the form on save; the caller decides how to persist it.
+/// Returned by the form on save. [sessions] holds one [ClassSession] per
+/// selected day — e.g. a MON/THU class produces two sessions with the
+/// same time/subject/room but different `day`, so the caller can write
+/// them as separate Firestore docs without the user re-entering the
+/// class twice.
 class ClassFormResult {
-  final ClassSession session;
+  final List<ClassSession> sessions;
   final bool isNew;
-  ClassFormResult(this.session, this.isNew);
+  ClassFormResult(this.sessions, this.isNew);
 }
 
 class ClassFormScreen extends StatefulWidget {
@@ -34,7 +38,11 @@ class _ClassFormScreenState extends State<ClassFormScreen> {
   late TextEditingController _professorCtrl;
   late TextEditingController _roomCtrl;
 
-  String _day = kWeekDays.first;
+  // Multiple days can be picked when adding a class that meets more than
+  // once a week at the same time (e.g. MON/THU). When editing, this stays
+  // a single-day selection since an existing class is tied to one
+  // Firestore document.
+  final Set<String> _selectedDays = {};
   TimeOfDay _startTime = const TimeOfDay(hour: 8, minute: 0);
   TimeOfDay _endTime = const TimeOfDay(hour: 9, minute: 0);
   String _color = kPastelPalette.first;
@@ -52,10 +60,12 @@ class _ClassFormScreenState extends State<ClassFormScreen> {
     _professorCtrl = TextEditingController(text: e?.professor ?? '');
     _roomCtrl = TextEditingController(text: e?.room ?? '');
     if (e != null) {
-      _day = e.day;
+      _selectedDays.add(e.day);
       _startTime = _parseTime(e.startTime);
       _endTime = _parseTime(e.endTime);
       _color = e.color;
+    } else {
+      _selectedDays.add(kWeekDays.first);
     }
   }
 
@@ -66,6 +76,33 @@ class _ClassFormScreenState extends State<ClassFormScreen> {
 
   String _formatTime(TimeOfDay t) =>
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
+  String _dayLabel(String code) {
+    const map = {
+      'MON': 'Mon', 'TUE': 'Tue', 'WED': 'Wed',
+      'THU': 'Thu', 'FRI': 'Fri', 'SAT': 'Sat',
+    };
+    return map[code] ?? code;
+  }
+
+  void _toggleDay(String day) {
+    setState(() {
+      if (_isEditing) {
+        // Editing stays tied to a single Firestore doc, so picking a new
+        // day just swaps the selection instead of adding to it.
+        _selectedDays
+          ..clear()
+          ..add(day);
+        return;
+      }
+      if (_selectedDays.contains(day)) {
+        // Keep at least one day selected.
+        if (_selectedDays.length > 1) _selectedDays.remove(day);
+      } else {
+        _selectedDays.add(day);
+      }
+    });
+  }
 
   Future<void> _pickTime({required bool isStart}) async {
     final picked = await showTimePicker(
@@ -85,6 +122,11 @@ class _ClassFormScreenState extends State<ClassFormScreen> {
   void _save() {
     if (!_formKey.currentState!.validate()) return;
 
+    if (_selectedDays.isEmpty) {
+      _showError('Select at least one day.');
+      return;
+    }
+
     final startMin = _startTime.hour * 60 + _startTime.minute;
     final endMin = _endTime.hour * 60 + _endTime.minute;
     if (endMin <= startMin) {
@@ -92,41 +134,53 @@ class _ClassFormScreenState extends State<ClassFormScreen> {
       return;
     }
 
-    final candidate = ClassSession(
-      id: widget.existing?.id ?? const Uuid().v4(),
-      subjectCode: _subjectCodeCtrl.text.trim(),
-      subjectName: _subjectNameCtrl.text.trim(),
-      section: _sectionCtrl.text.trim(),
-      units: num.tryParse(_unitsCtrl.text.trim()) ?? 0,
-      professor: _professorCtrl.text.trim(),
-      day: _day,
-      startTime: _formatTime(_startTime),
-      endTime: _formatTime(_endTime),
-      room: _roomCtrl.text.trim(),
-      color: _color,
-    );
+    // Build one session per selected day, in weekday order, so a
+    // MON/THU class becomes two sessions sharing the same subject/time.
+    final days = kWeekDays.where(_selectedDays.contains).toList();
+    final candidates = days.map((day) {
+      final keepExistingId = _isEditing && day == widget.existing!.day;
+      return ClassSession(
+        id: keepExistingId ? widget.existing!.id : const Uuid().v4(),
+        subjectCode: _subjectCodeCtrl.text.trim(),
+        subjectName: _subjectNameCtrl.text.trim(),
+        section: _sectionCtrl.text.trim(),
+        units: num.tryParse(_unitsCtrl.text.trim()) ?? 0,
+        professor: _professorCtrl.text.trim(),
+        day: day,
+        startTime: _formatTime(_startTime),
+        endTime: _formatTime(_endTime),
+        room: _roomCtrl.text.trim(),
+        color: _color,
+      );
+    }).toList();
 
-    final conflicts = findConflicts(candidate, widget.allClassesInTerm);
-    if (conflicts.isNotEmpty) {
-      _confirmConflictAndSave(candidate, conflicts);
+    final conflictsById = <String, ClassSession>{};
+    for (final candidate in candidates) {
+      for (final conflict in findConflicts(candidate, widget.allClassesInTerm)) {
+        conflictsById[conflict.id] = conflict;
+      }
+    }
+
+    if (conflictsById.isNotEmpty) {
+      _confirmConflictAndSave(candidates, conflictsById.values.toList());
     } else {
-      Navigator.pop(context, ClassFormResult(candidate, !_isEditing));
+      Navigator.pop(context, ClassFormResult(candidates, !_isEditing));
     }
   }
 
   Future<void> _confirmConflictAndSave(
-    ClassSession candidate,
+    List<ClassSession> candidates,
     List<ClassSession> conflicts,
   ) async {
-    final names = conflicts.map((c) => '${c.subjectCode} (${c.startTime}-${c.endTime})').join(', ');
+    final names = conflicts
+        .map((c) => '${c.subjectCode} (${_dayLabel(c.day)} ${c.startTime}-${c.endTime})')
+        .join(', ');
     final proceed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Schedule Conflict'),
-        content: Text(
-          'This overlaps with $names on ${candidate.day}. Save it anyway?',
-        ),
+        content: Text('This overlaps with $names. Save it anyway?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           FilledButton(
@@ -138,7 +192,7 @@ class _ClassFormScreenState extends State<ClassFormScreen> {
       ),
     );
     if (proceed == true && mounted) {
-      Navigator.pop(context, ClassFormResult(candidate, !_isEditing));
+      Navigator.pop(context, ClassFormResult(candidates, !_isEditing));
     }
   }
 
@@ -226,15 +280,53 @@ class _ClassFormScreenState extends State<ClassFormScreen> {
                 icon: Icons.schedule_rounded,
                 title: 'Schedule',
                 children: [
-                  DropdownButtonFormField<String>(
-                    value: _day,
-                    decoration: const InputDecoration(labelText: 'Day'),
-                    items: kWeekDays
-                        .map((d) => DropdownMenuItem(value: d, child: Text(d)))
-                        .toList(),
-                    onChanged: (v) => setState(() => _day = v!),
+                  Row(
+                    children: [
+                      const Text(
+                        'Day(s)',
+                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppColors.textMuted),
+                      ),
+                      if (!_isEditing) ...[
+                        const SizedBox(width: 6),
+                        Tooltip(
+                          message: 'Pick every day this class meets at this same time, '
+                              'e.g. Mon & Thu — one entry instead of adding it twice.',
+                          child: Icon(Icons.info_outline_rounded, size: 14, color: AppColors.textMuted),
+                        ),
+                      ],
+                    ],
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: kWeekDays.map((d) {
+                      final selected = _selectedDays.contains(d);
+                      return ChoiceChip(
+                        label: Text(_dayLabel(d)),
+                        selected: selected,
+                        onSelected: (_) => _toggleDay(d),
+                        selectedColor: AppColors.navyDark,
+                        labelStyle: TextStyle(
+                          color: selected ? Colors.white : AppColors.textDark,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        backgroundColor: AppColors.pillLavender.withOpacity(0.6),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          side: BorderSide.none,
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  if (!_isEditing && _selectedDays.length > 1) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      'This will add ${_selectedDays.length} sessions at the same time, one per day.',
+                      style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
                   Row(
                     children: [
                       Expanded(
@@ -270,7 +362,13 @@ class _ClassFormScreenState extends State<ClassFormScreen> {
               const SizedBox(height: 28),
               FilledButton(
                 onPressed: _save,
-                child: Text(_isEditing ? 'Save Changes' : 'Add Class'),
+                child: Text(
+                  _isEditing
+                      ? 'Save Changes'
+                      : _selectedDays.length > 1
+                          ? 'Add Class (${_selectedDays.length} days)'
+                          : 'Add Class',
+                ),
               ),
             ],
           ),
