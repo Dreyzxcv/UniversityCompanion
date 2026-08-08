@@ -9,7 +9,12 @@ const double _timeColumnWidth = 52;
 
 /// Calendar-style weekly grid, Monday-Saturday, time on the vertical axis.
 /// Each class renders as a positioned colored block sized to its duration.
-class WeeklyGrid extends StatelessWidget {
+///
+/// The day-name header row stays pinned at the top and the time-of-day
+/// column stays pinned on the left, no matter how far the grid body has
+/// been scrolled — otherwise a block far down/right (like a single
+/// afternoon lab) has no visible reference for which day or time it's in.
+class WeeklyGrid extends StatefulWidget {
   final List<ClassSession> classes;
   final void Function(ClassSession) onTapClass;
 
@@ -20,82 +25,164 @@ class WeeklyGrid extends StatelessWidget {
   });
 
   @override
+  State<WeeklyGrid> createState() => _WeeklyGridState();
+}
+
+class _WeeklyGridState extends State<WeeklyGrid> {
+  // The body is the only surface the user actually drags. The header row
+  // and time column use controllers that we keep in lockstep with the
+  // body's controllers via listeners, so they visually track the scroll
+  // without being draggable themselves (dragging a header/label column
+  // directly would be a confusing UX).
+  final _bodyHorizontal = ScrollController();
+  final _bodyVertical = ScrollController();
+  final _headerHorizontal = ScrollController();
+  final _timeVertical = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _bodyHorizontal.addListener(_syncHeader);
+    _bodyVertical.addListener(_syncTime);
+  }
+
+  void _syncHeader() {
+    if (!_headerHorizontal.hasClients) return;
+    final offset = _bodyHorizontal.offset.clamp(
+      0.0,
+      _headerHorizontal.position.maxScrollExtent,
+    );
+    if (_headerHorizontal.offset != offset) {
+      _headerHorizontal.jumpTo(offset);
+    }
+  }
+
+  void _syncTime() {
+    if (!_timeVertical.hasClients) return;
+    final offset = _bodyVertical.offset.clamp(
+      0.0,
+      _timeVertical.position.maxScrollExtent,
+    );
+    if (_timeVertical.offset != offset) {
+      _timeVertical.jumpTo(offset);
+    }
+  }
+
+  @override
+  void dispose() {
+    _bodyHorizontal.removeListener(_syncHeader);
+    _bodyVertical.removeListener(_syncTime);
+    _bodyHorizontal.dispose();
+    _bodyVertical.dispose();
+    _headerHorizontal.dispose();
+    _timeVertical.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final totalHeight = (_endHour - _startHour) * _hourHeight;
+    final totalWidth = _dayColumnWidth * kWeekDays.length;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.only(bottom: 100),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: SizedBox(
-          width: _timeColumnWidth + _dayColumnWidth * kWeekDays.length,
-          child: Column(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Pinned header row: empty corner + horizontally-synced day labels.
+        Row(
+          children: [
+            const SizedBox(width: _timeColumnWidth),
+            Expanded(
+              child: ClipRect(
+                child: SingleChildScrollView(
+                  controller: _headerHorizontal,
+                  scrollDirection: Axis.horizontal,
+                  physics: const NeverScrollableScrollPhysics(),
+                  child: _buildHeaderRow(),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const Divider(height: 1),
+        // Pinned time column (left) + scrollable grid body (right).
+        Expanded(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildHeaderRow(),
-              SizedBox(
-                height: totalHeight,
-                child: Stack(
-                  children: [
-                    _buildTimeLines(totalHeight),
-                    _buildDayColumns(totalHeight),
-                    ...classes.map(_buildClassBlock),
-                  ],
+              ClipRect(
+                child: SingleChildScrollView(
+                  controller: _timeVertical,
+                  physics: const NeverScrollableScrollPhysics(),
+                  child: _buildTimeLines(totalHeight),
+                ),
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.only(bottom: 100),
+                  controller: _bodyVertical,
+                  child: SingleChildScrollView(
+                    controller: _bodyHorizontal,
+                    scrollDirection: Axis.horizontal,
+                    child: SizedBox(
+                      width: totalWidth,
+                      height: totalHeight,
+                      child: Stack(
+                        children: [
+                          _buildDayColumns(totalHeight),
+                          ...widget.classes.map(_buildClassBlock),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeaderRow() {
-    return Row(
-      children: [
-        SizedBox(width: _timeColumnWidth),
-        ...kWeekDays.map(
-          (d) => Container(
-            width: _dayColumnWidth,
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            alignment: Alignment.center,
-            child: Text(
-              _dayLabel(d),
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
           ),
         ),
       ],
     );
   }
 
+  Widget _buildHeaderRow() {
+    return Row(
+      children: kWeekDays.map(
+        (d) => Container(
+          width: _dayColumnWidth,
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          alignment: Alignment.center,
+          child: Text(
+            _dayLabel(d),
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+        ),
+      ).toList(),
+    );
+  }
+
   Widget _buildTimeLines(double totalHeight) {
     final hours = _endHour - _startHour;
-    return Positioned(
-      left: 0,
-      top: 0,
-      child: SizedBox(
-        width: _timeColumnWidth,
-        height: totalHeight,
-        child: Column(
-          children: List.generate(hours, (i) {
-            final hour = _startHour + i;
-            final label = hour <= 12 ? '$hour${hour == 12 ? 'pm' : 'am'}' : '${hour - 12}pm';
-            return SizedBox(
-              height: _hourHeight,
-              child: Align(
-                alignment: Alignment.topCenter,
-                child: Text(label, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-              ),
-            );
-          }),
-        ),
+    return SizedBox(
+      width: _timeColumnWidth,
+      height: totalHeight,
+      child: Column(
+        children: List.generate(hours, (i) {
+          final hour = _startHour + i;
+          final label = hour <= 12 ? '$hour${hour == 12 ? 'pm' : 'am'}' : '${hour - 12}pm';
+          return SizedBox(
+            height: _hourHeight,
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: Text(label, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+            ),
+          );
+        }),
       ),
     );
   }
 
   Widget _buildDayColumns(double totalHeight) {
     return Positioned(
-      left: _timeColumnWidth,
+      left: 0,
       top: 0,
       child: Row(
         children: kWeekDays.map((_) {
@@ -129,12 +216,12 @@ class WeeklyGrid extends StatelessWidget {
     final height = ((session.endMinutes - session.startMinutes) / 60) * _hourHeight;
 
     return Positioned(
-      left: _timeColumnWidth + dayIndex * _dayColumnWidth + 2,
+      left: dayIndex * _dayColumnWidth + 2,
       top: top.clamp(0, double.infinity),
       width: _dayColumnWidth - 4,
       height: height.clamp(28, double.infinity),
       child: GestureDetector(
-        onTap: () => onTapClass(session),
+        onTap: () => widget.onTapClass(session),
         child: Container(
           padding: const EdgeInsets.all(6),
           decoration: BoxDecoration(
