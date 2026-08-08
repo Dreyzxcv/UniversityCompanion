@@ -100,7 +100,7 @@ class _TopBar extends StatelessWidget {
           ),
         ),
         const Text(
-          'Campus Companion',
+          'University Companion',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w900,

@@ -3,6 +3,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz_data;
 import '../models/class_session.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 
 class NotificationService {
   NotificationService._();
@@ -20,7 +21,9 @@ class NotificationService {
     if (_initialized) return;
 
     tz_data.initializeTimeZones();
-    tz.setLocalLocation(tz.local);
+
+    final timezoneInfo = await FlutterTimezone.getLocalTimezone();
+    tz.setLocalLocation(tz.getLocation(timezoneInfo.identifier));
 
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
 
@@ -30,15 +33,9 @@ class NotificationService {
       requestSoundPermission: false,
     );
 
-    // Required on Windows: without this, the Windows platform
-    // implementation never registers itself as
-    // FlutterLocalNotificationsPlatform.instance, and any call into the
-    // plugin throws LateInitializationError.
-    final windowsInit = WindowsInitializationSettings(
+    const windowsInit = WindowsInitializationSettings(
       appName: 'University Companion',
       appUserModelId: 'com.example.universityCompanionApp',
-      // Replace with a GUID you generate once for this app (search
-      // "GUID generator" online) — this placeholder is fine for dev.
       guid: 'd49b0314-ee7a-4626-bf79-97cdb8a991bb',
     );
 
@@ -62,7 +59,6 @@ class NotificationService {
             importance: Importance.high,
           ),
         );
-
     _initialized = true;
   }
 

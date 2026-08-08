@@ -1,4 +1,4 @@
-// Basic smoke test for Campus Companion.
+// Basic smoke test for University Companion.
 //
 // The default Flutter template test (looking for a counter and a '+'
 // button) doesn't apply to this app, so this instead verifies that the
