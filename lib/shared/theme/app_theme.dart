@@ -14,12 +14,28 @@ class AppColors {
   static const mint = Color(0xFFE1F5F0);
   static const overdue = Color(0xFFE0483E);
   static const cardBorder = Color(0xFFE7E8F5);
+  static const excellent = Color(0xFF16A672);
+  static const goodStanding = navyMid;
+  static const passingWarn = Color(0xFFDB9A15);
 
   static const heroGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [navyDark, navyMid],
   );
+
+  static Color forTier(int tier) {
+    switch (tier) {
+      case 0:
+        return excellent;
+      case 1:
+        return goodStanding;
+      case 2:
+        return passingWarn;
+      default:
+        return overdue;
+    }
+  }
 }
 
 class AppTheme {

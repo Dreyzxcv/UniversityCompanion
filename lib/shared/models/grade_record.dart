@@ -22,7 +22,7 @@ class GradeRecord {
       subjectName: map['subjectName'] ?? '',
       units: map['units'] ?? 0,
       grade: (map['grade'] ?? 0).toDouble(),
-      gradeScaleId: map['gradeScaleId'] ?? 'ateneo_4.0',
+      gradeScaleId: map['gradeScaleId'] ?? 'ph_1.00_5.00',
     );
   }
 

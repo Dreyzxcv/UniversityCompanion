@@ -2,6 +2,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import '../shared/models/grade_record.dart';
 import '../shared/services/firestore_service.dart';
+import '../shared/theme/app_theme.dart';
 
 class QpiTrendSection extends StatefulWidget {
   final FirestoreService service;
@@ -41,8 +42,17 @@ class _QpiTrendSectionState extends State<QpiTrendSection> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       clipBehavior: Clip.antiAlias,
       child: ExpansionTile(
-        leading: const Icon(Icons.show_chart_rounded),
-        title: const Text('QPI Trend'),
+        leading: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: AppColors.pillLavender,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Icon(Icons.show_chart_rounded, color: AppColors.navyDark, size: 18),
+        ),
+        title: const Text('QPI Trend', style: TextStyle(fontWeight: FontWeight.w700)),
+        subtitle: const Text('1.00 = best · 5.00 = worst', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
         onExpansionChanged: (open) {
           if (open) _refresh();
         },
@@ -73,16 +83,32 @@ class _QpiTrendSectionState extends State<QpiTrendSection> {
                     ),
                   );
                 }
+
+                final improving = results.last.semesterQpi <= results.first.semesterQpi;
+                final lineColor = improving ? AppColors.excellent : AppColors.overdue;
+
+                // Plot (6 - qpi) so the chart visually reads "up = better"
+                // even though a *lower* QPI is the academically better one.
+                double plot(double qpi) => 6.0 - qpi;
+
                 return SizedBox(
                   height: 200,
                   child: LineChart(
                     LineChartData(
-                      minY: 0,
-                      maxY: 4,
+                      minY: 1,
+                      maxY: 5,
                       gridData: const FlGridData(show: true),
                       titlesData: FlTitlesData(
                         leftTitles: AxisTitles(
-                          sideTitles: SideTitles(showTitles: true, reservedSize: 32, interval: 1),
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 36,
+                            interval: 1,
+                            getTitlesWidget: (value, meta) {
+                              final actual = 6.0 - value; // undo the plot transform
+                              return Text(actual.toStringAsFixed(2), style: const TextStyle(fontSize: 10));
+                            },
+                          ),
                         ),
                         bottomTitles: AxisTitles(
                           sideTitles: SideTitles(
@@ -107,12 +133,13 @@ class _QpiTrendSectionState extends State<QpiTrendSection> {
                       lineBarsData: [
                         LineChartBarData(
                           isCurved: true,
-                          color: Colors.indigo,
+                          color: lineColor,
                           barWidth: 3,
                           dotData: const FlDotData(show: true),
+                          belowBarData: BarAreaData(show: true, color: lineColor.withOpacity(0.08)),
                           spots: [
                             for (int i = 0; i < results.length; i++)
-                              FlSpot(i.toDouble(), results[i].semesterQpi),
+                              FlSpot(i.toDouble(), plot(results[i].semesterQpi)),
                           ],
                         ),
                       ],
