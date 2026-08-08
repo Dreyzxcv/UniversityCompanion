@@ -52,6 +52,22 @@ class FirestoreService {
     await _terms.doc(termId).update({'isActive': true});
   }
 
+  Future<void> deleteTerm(String termId) async {
+    final classesSnap = await _classes(termId).get();
+    final gradesSnap = await _grades(termId).get();
+
+    final batch = _db.batch();
+    for (final doc in classesSnap.docs) {
+      batch.delete(doc.reference);
+    }
+    for (final doc in gradesSnap.docs) {
+      batch.delete(doc.reference);
+    }
+    batch.delete(_terms.doc(termId));
+
+    await batch.commit();
+  }
+
   Future<void> _deactivateAllTerms() async {
     final snap = await _terms.get();
     final batch = _db.batch();

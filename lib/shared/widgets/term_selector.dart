@@ -52,6 +52,33 @@ class TermSelector extends StatelessWidget {
     );
   }
 
+  Future<void> _confirmDeleteTerm(BuildContext context, String termId, String termName) async {
+    final controller = context.read<TermController>();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Delete term?'),
+        content: Text(
+          'This will permanently delete "$termName" along with all its classes and grades. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await controller.deleteTerm(termId);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = context.watch<TermController>();
@@ -90,6 +117,16 @@ class TermSelector extends StatelessWidget {
           )
         else
           const Text('No terms yet', style: TextStyle(color: Colors.grey)),
+        if (controller.selectedTerm != null)
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.red),
+            tooltip: 'Delete term',
+            onPressed: () => _confirmDeleteTerm(
+              context,
+              controller.selectedTerm!.id,
+              controller.selectedTerm!.name,
+            ),
+          ),
         IconButton(
           icon: const Icon(Icons.add_circle_outline),
           tooltip: 'New term',

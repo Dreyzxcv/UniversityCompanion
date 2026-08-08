@@ -47,6 +47,14 @@ class TermController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> deleteTerm(String termId) async {
+    await _service.deleteTerm(termId);
+    if (_selectedTermId == termId) {
+      _selectedTermId = null;
+      notifyListeners();
+    }
+  }
+
   @override
   void dispose() {
     _sub?.cancel();
