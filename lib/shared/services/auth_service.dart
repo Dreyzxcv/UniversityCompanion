@@ -27,6 +27,8 @@ class AuthService {
     required String school,
     required String email,
     required String password,
+    String course = '',
+    String yearLevel = '',
   }) async {
     final cred = await _auth.createUserWithEmailAndPassword(
       email: email,
@@ -38,6 +40,8 @@ class AuthService {
       'school': school,
       'email': email,
       'verified': false,
+      'course': course,
+      'yearLevel': yearLevel,
     });
 
     await cred.user!.sendEmailVerification();
@@ -50,12 +54,6 @@ class AuthService {
   }) {
     return _auth.signInWithEmailAndPassword(email: email, password: password);
   }
-
-  /// Signs in with Google. Returns null if the user cancels the picker
-  /// (not an error — callers should just no-op in that case).
-  /// Creates a `users/{uid}` profile doc on first sign-in, same shape as
-  /// the email/password [signUp] path, so the rest of the app (profile
-  /// screen, etc.) doesn't need to care which auth method was used.
   Future<UserCredential?> signInWithGoogle() async {
     final googleUser = await _googleSignIn.signIn();
     if (googleUser == null) return null; // user cancelled the picker
@@ -103,12 +101,16 @@ class AuthService {
   Future<void> updateProfile({
     required String name,
     required String school,
+    String? course,
+    String? yearLevel,
   }) async {
     final user = _auth.currentUser;
     if (user == null) return;
     await _db.collection('users').doc(user.uid).update({
       'name': name,
       'school': school,
+      if (course != null) 'course': course,
+      if (yearLevel != null) 'yearLevel': yearLevel,
     });
   }
 

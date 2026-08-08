@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../shared/services/auth_service.dart';
+import '../shared/widgets/term_selector.dart' show kYearLevels;
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -15,6 +16,10 @@ class _SignupScreenState extends State<SignupScreen> {
   final _schoolCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
+  final _confirmPasswordCtrl = TextEditingController();
+  final _courseCtrl = TextEditingController();
+
+  String _yearLevel = kYearLevels.first;
   bool _loading = false;
   String? _error;
 
@@ -24,6 +29,8 @@ class _SignupScreenState extends State<SignupScreen> {
     _schoolCtrl.dispose();
     _emailCtrl.dispose();
     _passwordCtrl.dispose();
+    _confirmPasswordCtrl.dispose();
+    _courseCtrl.dispose();
     super.dispose();
   }
 
@@ -40,6 +47,8 @@ class _SignupScreenState extends State<SignupScreen> {
         school: _schoolCtrl.text.trim(),
         email: _emailCtrl.text.trim(),
         password: _passwordCtrl.text,
+        course: _courseCtrl.text.trim(),
+        yearLevel: _yearLevel,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -89,6 +98,23 @@ class _SignupScreenState extends State<SignupScreen> {
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
+                  controller: _courseCtrl,
+                  decoration: const InputDecoration(labelText: 'Course / Program'),
+                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  value: _yearLevel,
+                  decoration: const InputDecoration(labelText: 'Year level'),
+                  items: kYearLevels
+                      .map((y) => DropdownMenuItem(value: y, child: Text(y)))
+                      .toList(),
+                  onChanged: (v) {
+                    if (v != null) setState(() => _yearLevel = v);
+                  },
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
                   controller: _emailCtrl,
                   keyboardType: TextInputType.emailAddress,
                   decoration: const InputDecoration(labelText: 'School email'),
@@ -102,6 +128,17 @@ class _SignupScreenState extends State<SignupScreen> {
                   decoration: const InputDecoration(labelText: 'Password'),
                   validator: (v) =>
                       (v == null || v.length < 6) ? 'At least 6 characters' : null,
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _confirmPasswordCtrl,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: 'Confirm password'),
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return 'Required';
+                    if (v != _passwordCtrl.text) return 'Passwords do not match';
+                    return null;
+                  },
                 ),
                 if (_error != null) ...[
                   const SizedBox(height: 12),

@@ -4,6 +4,8 @@ class AppUser {
   final String school;
   final String email;
   final bool verified;
+  final String course;
+  final String yearLevel;
 
   AppUser({
     required this.uid,
@@ -11,6 +13,8 @@ class AppUser {
     required this.school,
     required this.email,
     required this.verified,
+    this.course = '',
+    this.yearLevel = '',
   });
 
   factory AppUser.fromMap(String uid, Map<String, dynamic> map) {
@@ -20,6 +24,8 @@ class AppUser {
       school: map['school'] ?? '',
       email: map['email'] ?? '',
       verified: map['verified'] ?? false,
+      course: map['course'] ?? '',
+      yearLevel: map['yearLevel'] ?? '',
     );
   }
 
@@ -29,6 +35,8 @@ class AppUser {
       'school': school,
       'email': email,
       'verified': verified,
+      'course': course,
+      'yearLevel': yearLevel,
     };
   }
 }
