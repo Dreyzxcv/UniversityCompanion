@@ -177,4 +177,20 @@ class ReviewerService {
         .map((snap) =>
             snap.docs.map((d) => QuizAttempt.fromMap(d.id, d.data())).toList());
   }
+
+  Future<QuizAttempt?> getLatestAttempt(String reviewerId) async {
+    final snap = await _attempts
+        .where('reviewerId', isEqualTo: reviewerId)
+        .orderBy('takenAt', descending: true)
+        .limit(1)
+        .get();
+    if (snap.docs.isEmpty) return null;
+    final doc = snap.docs.first;
+    return QuizAttempt.fromMap(doc.id, doc.data());
+  }
+
+  Future<List<QuizQuestion>> getQuestionsOnce(String reviewerId) async {
+    final snap = await _questions(reviewerId).get();
+    return snap.docs.map((d) => QuizQuestion.fromMap(d.id, d.data())).toList();
+  }
 }
