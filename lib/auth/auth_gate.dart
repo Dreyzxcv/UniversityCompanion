@@ -3,12 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../shared/services/auth_service.dart';
 import '../shared/services/firestore_service.dart';
+import '../shared/services/reviewer_service.dart';
 import '../shared/widgets/main_shell.dart';
 import 'login_screen.dart';
 
-/// Gates access to the rest of the app behind Firebase Auth, per the
-/// requirement that Schedule and QPI Calculator are only reachable when
-/// logged in. Rebuilds the FirestoreService (scoped to the current uid)
+/// Gates access to the rest of the app behind Firebase Auth. Rebuilds
+/// FirestoreService and ReviewerService (both scoped to the current uid)
 /// whenever the signed-in user changes.
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
@@ -31,8 +31,15 @@ class AuthGate extends StatelessWidget {
           return const LoginScreen();
         }
 
-        return Provider<FirestoreService>(
-          create: (_) => FirestoreService(uid: user.uid),
+        return MultiProvider(
+          providers: [
+            Provider<FirestoreService>(
+              create: (_) => FirestoreService(uid: user.uid),
+            ),
+            Provider<ReviewerService>(
+              create: (_) => ReviewerService(uid: user.uid),
+            ),
+          ],
           child: const MainShell(),
         );
       },

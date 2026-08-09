@@ -7,6 +7,7 @@ import '../../schedule/schedule_screen.dart';
 import '../../qpi_calculator/qpi_screen.dart';
 import 'home_screen.dart';
 import '../../tasks/tasks_screen.dart';
+import '../../reviewer/reviewer_list_screen.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -29,6 +30,7 @@ class _MainShellState extends State<MainShell> {
     _NavTab(Icons.home_outlined, Icons.home_rounded, 'Home'),
     _NavTab(Icons.calendar_month_outlined, Icons.calendar_month_rounded, 'Schedule'),
     _NavTab(Icons.assignment_outlined, Icons.assignment_rounded, 'Tasks'),
+    _NavTab(Icons.auto_awesome_outlined, Icons.auto_awesome_rounded, 'Review'),
     _NavTab(Icons.calculate_outlined, Icons.calculate_rounded, 'QPI Calc'),
   ];
 
@@ -46,12 +48,13 @@ class _MainShellState extends State<MainShell> {
             HomeScreen(),
             ScheduleScreen(),
             TasksScreen(),
+            ReviewerListScreen(),
             QpiScreen(),
           ],
         ),
         bottomNavigationBar: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: Container(
               height: 68,
               decoration: BoxDecoration(
@@ -106,7 +109,7 @@ class _NavItem extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: selected ? AppColors.navyDark : Colors.transparent,
           borderRadius: BorderRadius.circular(18),
@@ -114,12 +117,12 @@ class _NavItem extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: selected ? Colors.white : AppColors.textMuted, size: 22),
+            Icon(icon, color: selected ? Colors.white : AppColors.textMuted, size: 20),
             const SizedBox(height: 2),
             Text(
               label,
               style: TextStyle(
-                fontSize: 10,
+                fontSize: 9,
                 fontWeight: FontWeight.w600,
                 color: selected ? Colors.white : AppColors.textMuted,
               ),
