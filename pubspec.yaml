@@ -1,7 +1,7 @@
 name: university_companion_app
 description: University Companion - Class Schedule & QPI Calculator MVP for Philippine university students.
 publish_to: 'none'
-version: 1.0.0
+version: 1.2.0
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
