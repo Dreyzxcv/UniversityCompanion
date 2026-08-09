@@ -21,6 +21,12 @@ class _QuizScreenState extends State<QuizScreen> {
   int _index = 0;
   bool _finishing = false;
 
+  // Currently-tapped (but not yet confirmed) choice for the multiple
+  // choice question type. Nothing is recorded into _answers until the
+  // user presses "Next" — tapping only highlights a choice, so a
+  // mis-tap/ghost-touch can be corrected before it's locked in.
+  String? _selectedChoice;
+
   @override
   void dispose() {
     _enumCtrl.dispose();
@@ -43,6 +49,7 @@ class _QuizScreenState extends State<QuizScreen> {
       setState(() {
         _index++;
         _enumCtrl.clear();
+        _selectedChoice = null;
       });
     }
   }
@@ -133,16 +140,48 @@ class _QuizScreenState extends State<QuizScreen> {
 
     switch (q.type) {
       case QuestionType.multipleChoice:
-        return ListView(
-          children: (q.choices ?? []).map((choice) {
-            return Card(
-              margin: const EdgeInsets.only(bottom: 10),
-              child: ListTile(
-                title: Text(choice),
-                onTap: () => _recordAnswer(q.id, [choice], questions),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: ListView(
+                children: (q.choices ?? []).map((choice) {
+                  final selected = _selectedChoice == choice;
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    color: selected ? AppColors.pillLavender : null,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      side: BorderSide(
+                        color: selected ? AppColors.navyDark : AppColors.cardBorder,
+                        width: selected ? 2 : 1,
+                      ),
+                    ),
+                    child: ListTile(
+                      title: Text(
+                        choice,
+                        style: TextStyle(
+                          fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                          color: selected ? AppColors.navyDark : AppColors.textDark,
+                        ),
+                      ),
+                      trailing: selected
+                          ? const Icon(Icons.check_circle_rounded, color: AppColors.navyDark)
+                          : const Icon(Icons.circle_outlined, color: AppColors.textMuted),
+                      onTap: () => setState(() => _selectedChoice = choice),
+                    ),
+                  );
+                }).toList(),
               ),
-            );
-          }).toList(),
+            ),
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: _selectedChoice == null
+                  ? null
+                  : () => _recordAnswer(q.id, [_selectedChoice!], questions),
+              child: Text(isLast ? 'Finish' : 'Next'),
+            ),
+          ],
         );
 
       case QuestionType.identification:
