@@ -4,7 +4,8 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // A user can only read/write their own user document and everything
-    // nested under it (terms, classes, grades). No cross-user access.
+    // nested under it (terms, classes, grades, reviewers, quiz attempts).
+    // No cross-user access.
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
 
@@ -22,6 +23,18 @@ service cloud.firestore {
         match /tasks/{taskId} {
           allow read, write: if request.auth != null && request.auth.uid == userId;
         }
+      }
+
+      match /reviewers/{reviewerId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+
+        match /questions/{questionId} {
+          allow read, write: if request.auth != null && request.auth.uid == userId;
+        }
+      }
+
+      match /quizAttempts/{attemptId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
       }
     }
 
