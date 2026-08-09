@@ -180,9 +180,9 @@ class ScheduleScreen extends StatelessWidget {
                           padding: const EdgeInsets.fromLTRB(20, 4, 20, 110),
                           child: Container(
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: context.cardBg,
                               borderRadius: BorderRadius.circular(22),
-                              border: Border.all(color: AppColors.cardBorder),
+                              border: Border.all(color: context.cardBorderColor),
                             ),
                             padding: const EdgeInsets.all(12),
                             child: WeeklyGrid(
@@ -234,10 +234,10 @@ class _ScheduleHeader extends StatelessWidget {
         Expanded(
           child: Text(
             'Class Schedule',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w900,
-              color: AppColors.navyDark,
+              color: context.textPrimary,
               letterSpacing: 0.2,
             ),
             overflow: TextOverflow.ellipsis,

@@ -23,7 +23,7 @@ class ReviewerListScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Padding(
+            Padding(
               padding: EdgeInsets.fromLTRB(20, 12, 20, 8),
               child: Row(
                 children: [
@@ -33,7 +33,7 @@ class ReviewerListScreen extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w900,
-                        color: AppColors.navyDark,
+                        color: context.textPrimary,
                       ),
                       overflow: TextOverflow.ellipsis,
                       maxLines: 1,

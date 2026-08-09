@@ -84,14 +84,16 @@ class AppTheme {
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           backgroundColor: AppColors.navyDark,
           foregroundColor: Colors.white,
           minimumSize: const Size.fromHeight(52),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
         ),
       ),
@@ -100,7 +102,8 @@ class AppTheme {
           foregroundColor: AppColors.navyDark,
           side: const BorderSide(color: AppColors.navyDark, width: 1.4),
           minimumSize: const Size.fromHeight(48),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         ),
       ),
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
@@ -178,14 +181,16 @@ extension AppThemeDark on AppTheme {
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           backgroundColor: AppColorsDark.navyMid,
           foregroundColor: Colors.white,
           minimumSize: const Size.fromHeight(52),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
         ),
       ),
@@ -194,7 +199,8 @@ extension AppThemeDark on AppTheme {
           foregroundColor: AppColorsDark.textLight,
           side: const BorderSide(color: AppColorsDark.navyMid, width: 1.4),
           minimumSize: const Size.fromHeight(48),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         ),
       ),
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
@@ -203,4 +209,17 @@ extension AppThemeDark on AppTheme {
       ),
     );
   }
+}
+
+extension AppColorsContext on BuildContext {
+  bool get isDark => Theme.of(this).brightness == Brightness.dark;
+
+  Color get textPrimary => isDark ? AppColorsDark.textLight : AppColors.textDark;
+  Color get textSecondary => isDark ? AppColorsDark.textMuted : AppColors.textMuted;
+  Color get cardBg => isDark ? AppColorsDark.surface : Colors.white;
+  Color get cardBorderColor => isDark ? AppColorsDark.cardBorder : AppColors.cardBorder;
+  Color get pillBg => isDark ? AppColorsDark.pillLavender : AppColors.pillLavender;
+  Color get accent => isDark ? AppColorsDark.textLight : AppColors.navyDark;
+  Color get gridLine => isDark ? AppColorsDark.cardBorder : Colors.grey.shade300;
+  Color get gridLineFaint => isDark ? AppColorsDark.cardBorder.withOpacity(0.6) : Colors.grey.shade200;
 }

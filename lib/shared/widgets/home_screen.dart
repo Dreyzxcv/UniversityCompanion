@@ -89,10 +89,10 @@ class _GreetingRow extends StatelessWidget {
           children: [
             Text(
               'Hi, $resolvedFirstName',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 26,
                 fontWeight: FontWeight.w800,
-                color: AppColors.textDark,
+                color: context.textPrimary,
               ),
             ),
             const SizedBox(width: 8),
@@ -255,12 +255,12 @@ class _TopBar extends StatelessWidget {
             ),
           ),
         ),
-        const Text(
+        Text(
           'University Companion',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w900,
-            color: AppColors.navyDark,
+            color: context.textPrimary,
             letterSpacing: 0.4,
           ),
         ),
@@ -289,11 +289,11 @@ class _RoundIconButton extends StatelessWidget {
         width: 44,
         height: 44,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: context.cardBg,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppColors.cardBorder),
+          border: Border.all(color: context.cardBorderColor),
         ),
-        child: Icon(icon, color: AppColors.textDark, size: 22),
+        child: Icon(icon, color: context.textPrimary, size: 22),
       ),
     );
   }
@@ -338,9 +338,9 @@ class _SchoolCard extends StatelessWidget {
         return Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: context.cardBg,
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: AppColors.cardBorder),
+            border: Border.all(color: context.cardBorderColor),
           ),
           child: Row(
             children: [
@@ -348,17 +348,16 @@ class _SchoolCard extends StatelessWidget {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: AppColors.pillLavender,
+                  color: context.pillBg,
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: const Icon(Icons.account_balance_rounded,
-                    color: AppColors.navyDark),
+                child: Icon(Icons.account_balance_rounded, color: context.accent),
               ),
               const SizedBox(width: 14),
               Expanded(
                 child: Text(school,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 15)),
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 15, color: context.textPrimary)),
               ),
               const Icon(Icons.verified_rounded,
                   color: AppColors.navyMid, size: 20),

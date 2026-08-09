@@ -3,34 +3,16 @@ import '../shared/models/class_session.dart';
 import 'package:provider/provider.dart';
 import '../shared/services/time_format_controller.dart';
 import '../shared/utils/time_format.dart';
+import '../shared/theme/app_theme.dart';
 
 const double _hourHeight = 64;
 const double _dayColumnWidth = 120;
 const double _timeColumnWidth = 52;
-
-// Fallback range used only when there are no classes at all to derive a
-// range from (WeeklyGrid is normally only built once classes.isNotEmpty,
-// but keep a sane default just in case).
 const int _fallbackStartHour = 7; // 7am
 const int _fallbackEndHour = 20; // 8pm
 
-// Padding (in whole hours) added before the earliest class and after the
-// latest one, so a block doesn't sit flush against the very top/bottom
-// edge of the grid.
 const int _hourPadding = 1;
 
-/// Calendar-style weekly grid, Monday-Saturday, time on the vertical axis.
-/// Each class renders as a positioned colored block sized to its duration.
-///
-/// The day-name header row stays pinned at the top and the time-of-day
-/// column stays pinned on the left, no matter how far the grid body has
-/// been scrolled — otherwise a block far down/right (like a single
-/// afternoon lab) has no visible reference for which day or time it's in.
-///
-/// The visible hour range is also derived from the actual classes rather
-/// than a fixed 7am–8pm span: if every class for the term falls between
-/// 1pm and 3pm, there's no reason to render (and force scrolling through)
-/// empty rows from 7am–12pm and 4pm–8pm.
 class WeeklyGrid extends StatefulWidget {
   final List<ClassSession> classes;
   final void Function(ClassSession) onTapClass;
@@ -96,11 +78,6 @@ class _WeeklyGridState extends State<WeeklyGrid> {
     super.dispose();
   }
 
-  /// Earliest class-start hour and latest class-end hour across the whole
-  /// week (all days combined, since every day shares the same vertical
-  /// axis), padded by [_hourPadding] on each side and clamped to a valid
-  /// 0–24 range. Recomputed on every build so it stays in sync as classes
-  /// are added/edited/removed.
   (int start, int end) get _hourRange {
     if (widget.classes.isEmpty) {
       return (_fallbackStartHour, _fallbackEndHour);
@@ -195,7 +172,7 @@ class _WeeklyGridState extends State<WeeklyGrid> {
           alignment: Alignment.center,
           child: Text(
             _dayLabel(d),
-            style: const TextStyle(fontWeight: FontWeight.bold),
+            style: TextStyle(fontWeight: FontWeight.bold, color: context.textPrimary),
           ),
         ),
       ).toList(),
@@ -215,7 +192,7 @@ class _WeeklyGridState extends State<WeeklyGrid> {
             height: _hourHeight,
             child: Align(
               alignment: Alignment.topCenter,
-              child: Text(label, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+              child: Text(label, style: TextStyle(fontSize: 11, color: context.textSecondary)),
             ),
           );
         }),
@@ -233,14 +210,14 @@ class _WeeklyGridState extends State<WeeklyGrid> {
             width: _dayColumnWidth,
             height: totalHeight,
             decoration: BoxDecoration(
-              border: Border(left: BorderSide(color: Colors.grey.shade300)),
+              border: Border(left: BorderSide(color: context.gridLine)),
             ),
             child: Column(
               children: List.generate(endHour - startHour, (_) {
                 return Container(
                   height: _hourHeight,
                   decoration: BoxDecoration(
-                    border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
+                    border: Border(bottom: BorderSide(color: context.gridLineFaint)),
                   ),
                 );
               }),

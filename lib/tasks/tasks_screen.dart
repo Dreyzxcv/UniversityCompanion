@@ -92,13 +92,13 @@ class TasksScreen extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
               child: Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       'Tasks',
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w900,
-                        color: AppColors.navyDark,
+                        color: context.textPrimary,
                       ),
                       overflow: TextOverflow.ellipsis,
                       maxLines: 1,
