@@ -12,6 +12,8 @@ dependencies:
   cupertino_icons: ^1.0.6
   flutter_svg: ^2.0.17
   flutter_timezone: ^5.1.0  
+  file_picker: ^8.1.6
+  syncfusion_flutter_pdf: ^27.2.5
 
   # Firebase
   firebase_core: ^4.13.0
