@@ -1,1 +1,13 @@
-{"indexes": [], "fieldOverrides": []}
+{
+  "indexes": [
+    {
+      "collectionGroup": "quizAttempts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "reviewerId", "order": "ASCENDING" },
+        { "fieldPath": "takenAt", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
