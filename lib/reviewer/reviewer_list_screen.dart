@@ -5,8 +5,10 @@ import '../shared/models/reviewer.dart';
 import '../shared/services/reviewer_service.dart';
 import '../shared/theme/app_theme.dart';
 import '../shared/widgets/empty_state.dart';
+import '../shared/models/quiz_attempt.dart';
 import 'add_reviewer_screen.dart';
 import 'quiz_screen.dart';
+import 'quiz_result_screen.dart';
 
 class ReviewerListScreen extends StatelessWidget {
   const ReviewerListScreen({super.key});
@@ -64,7 +66,8 @@ class ReviewerListScreen extends StatelessWidget {
                     itemBuilder: (context, i) {
                       return _ReviewerCard(
                         reviewer: reviewers[i],
-                        onTap: () => _openQuiz(context, reviewers[i]),
+                        service: service,
+                        onTap: () => _handleTap(context, service, reviewers[i]),
                         onDelete: () =>
                             _confirmDelete(context, service, reviewers[i]),
                       );
@@ -78,7 +81,7 @@ class ReviewerListScreen extends StatelessWidget {
       ),
       floatingActionButton: Padding(
         padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).padding.bottom + 90,
+          bottom: MediaQuery.of(context).padding.bottom,
         ),
         child: FloatingActionButton(
           onPressed: () => _openAddReviewer(context),
@@ -109,8 +112,78 @@ class ReviewerListScreen extends StatelessWidget {
     );
   }
 
-  void _openQuiz(BuildContext context, Reviewer reviewer) {
-    final reviewerService = context.read<ReviewerService>();
+  Future<void> _handleTap(
+    BuildContext context,
+    ReviewerService reviewerService,
+    Reviewer reviewer,
+  ) async {
+    final latest = await reviewerService.getLatestAttempt(reviewer.id);
+    if (!context.mounted) return;
+
+    if (latest == null) {
+      _openQuiz(context, reviewerService, reviewer);
+      return;
+    }
+
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Wrap(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Text(
+                'Last attempt: ${latest.score}/${latest.totalQuestions} '
+                '(${latest.percentage.toStringAsFixed(0)}%)',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textDark,
+                ),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.visibility_outlined, color: AppColors.navyDark),
+              title: const Text('View Last Result'),
+              onTap: () => Navigator.pop(ctx, 'view'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.refresh_rounded, color: AppColors.navyMid),
+              title: const Text('Retake Quiz'),
+              onTap: () => Navigator.pop(ctx, 'retake'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+
+    if (!context.mounted || choice == null) return;
+
+    if (choice == 'view') {
+      final questions = await reviewerService.getQuestionsOnce(reviewer.id);
+      if (!context.mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => Provider<ReviewerService>.value(
+            value: reviewerService,
+            child: QuizResultScreen(attempt: latest, questions: questions),
+          ),
+        ),
+      );
+    } else if (choice == 'retake') {
+      _openQuiz(context, reviewerService, reviewer);
+    }
+  }
+
+  void _openQuiz(
+    BuildContext context,
+    ReviewerService reviewerService,
+    Reviewer reviewer,
+  ) {
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -156,11 +229,13 @@ class ReviewerListScreen extends StatelessWidget {
 
 class _ReviewerCard extends StatelessWidget {
   final Reviewer reviewer;
+  final ReviewerService service;
   final VoidCallback onTap;
   final VoidCallback onDelete;
 
   const _ReviewerCard({
     required this.reviewer,
+    required this.service,
     required this.onTap,
     required this.onDelete,
   });
@@ -196,59 +271,107 @@ class _ReviewerCard extends StatelessWidget {
           onTap: onTap,
           child: Padding(
             padding: const EdgeInsets.all(16),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: AppColors.pillLavender,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: const Icon(Icons.auto_awesome_rounded,
-                      color: AppColors.navyDark),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        reviewer.title.isEmpty ? 'Untitled Reviewer' : reviewer.title,
-                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-                        overflow: TextOverflow.ellipsis,
+                Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: AppColors.pillLavender,
+                        borderRadius: BorderRadius.circular(14),
                       ),
-                      const SizedBox(height: 4),
-                      Row(
+                      child: const Icon(Icons.auto_awesome_rounded,
+                          color: AppColors.navyDark),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (reviewer.subjectCode != null &&
-                              reviewer.subjectCode!.isNotEmpty) ...[
-                            Text(
-                              reviewer.subjectCode!,
-                              style: const TextStyle(
-                                  fontSize: 12,
-                                  color: AppColors.textMuted,
-                                  fontWeight: FontWeight.w600),
-                            ),
-                            const Text(' · ',
-                                style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
-                          ],
                           Text(
-                            '${reviewer.questionCount} question${reviewer.questionCount == 1 ? '' : 's'}',
-                            style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                            reviewer.title.isEmpty ? 'Untitled Reviewer' : reviewer.title,
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          const Text(' · ',
-                              style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
-                          Text(
-                            DateFormat('MMM d').format(reviewer.createdAt),
-                            style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              if (reviewer.subjectCode != null &&
+                                  reviewer.subjectCode!.isNotEmpty) ...[
+                                Text(
+                                  reviewer.subjectCode!,
+                                  style: const TextStyle(
+                                      fontSize: 12,
+                                      color: AppColors.textMuted,
+                                      fontWeight: FontWeight.w600),
+                                ),
+                                const Text(' · ',
+                                    style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                              ],
+                              Text(
+                                '${reviewer.questionCount} question${reviewer.questionCount == 1 ? '' : 's'}',
+                                style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                              ),
+                              const Text(' · ',
+                                  style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                              Text(
+                                DateFormat('MMM d').format(reviewer.createdAt),
+                                style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                    ],
-                  ),
+                    ),
+                    const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
+                  ],
                 ),
-                const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
+                StreamBuilder<List<QuizAttempt>>(
+                  stream: service.watchAttempts(reviewer.id),
+                  builder: (context, snapshot) {
+                    final attempts = snapshot.data ?? const [];
+                    if (attempts.isEmpty) return const SizedBox.shrink();
+                    final latest = attempts.first; // already ordered desc
+                    final pct = latest.percentage;
+                    final color = pct >= 75
+                        ? AppColors.excellent
+                        : pct >= 50
+                            ? AppColors.passingWarn
+                            : AppColors.overdue;
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 10, left: 58),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: color.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              'Last: ${latest.score}/${latest.totalQuestions} · ${pct.toStringAsFixed(0)}%',
+                              style: TextStyle(
+                                color: color,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                          if (attempts.length > 1) ...[
+                            const SizedBox(width: 8),
+                            Text(
+                              '${attempts.length} attempts',
+                              style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                            ),
+                          ],
+                        ],
+                      ),
+                    );
+                  },
+                ),
               ],
             ),
           ),
