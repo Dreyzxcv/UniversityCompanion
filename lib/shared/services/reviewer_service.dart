@@ -86,7 +86,7 @@ class ReviewerService {
     required int numEnumeration,
   }) async {
     final model = FirebaseAI.googleAI().generativeModel(
-      model: 'gemini-2.5-flash-lite',
+      model: 'gemini-3.5-flash-lite',
       generationConfig: GenerationConfig(
         responseMimeType: 'application/json',
         responseSchema: Schema.object(
