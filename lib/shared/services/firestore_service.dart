@@ -82,6 +82,10 @@ class FirestoreService {
     await batch.commit();
   }
 
+  Future<void> renameTerm(String termId, {required String name, required String schoolYear}) {
+    return _terms.doc(termId).update({'name': name, 'schoolYear': schoolYear});
+  }
+
   // ---------------- Classes ----------------
 
   Stream<List<ClassSession>> watchClasses(String termId) {

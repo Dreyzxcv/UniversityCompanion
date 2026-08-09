@@ -6,12 +6,24 @@ import '../shared/services/term_controller.dart';
 import '../shared/theme/app_theme.dart';
 import '../shared/widgets/term_selector.dart';
 import '../shared/services/notification_service.dart';
+import '../shared/services/notification_preferences.dart';
 import 'class_form_screen.dart';
 import 'weekly_grid.dart';
-import '../shared/services/time_format_controller.dart';
 
 class ScheduleScreen extends StatelessWidget {
   const ScheduleScreen({super.key});
+
+  Future<void> _syncReminder(BuildContext context, ClassSession session) async {
+    final notifPrefs = context.read<NotificationPreferencesController>().prefs;
+    if (notifPrefs.enabled) {
+      await NotificationService.instance.scheduleClassReminder(
+        session,
+        minutesBefore: notifPrefs.classReminderMinutesBefore,
+      );
+    } else {
+      await NotificationService.instance.cancelClassReminder(session.id);
+    }
+  }
 
   Future<void> _openAddForm(
     BuildContext context,
@@ -32,7 +44,8 @@ class ScheduleScreen extends StatelessWidget {
     // own class doc and schedule its own reminder.
     for (final session in result.sessions) {
       await service.addClass(termId, session);
-      await NotificationService.instance.scheduleClassReminder(session);
+      if (!context.mounted) return;
+      await _syncReminder(context, session);
     }
   }
 
@@ -83,14 +96,18 @@ class ScheduleScreen extends StatelessWidget {
       ),
     );
 
+    if (!context.mounted) return;
+
     if (action == null) {
       await context.read<FirestoreService>().updateClass(termId, session);
-      await NotificationService.instance.scheduleClassReminder(session);
+      if (!context.mounted) return;
+      await _syncReminder(context, session);
       return;
     }
     if (action == 'save') {
       await context.read<FirestoreService>().updateClass(termId, session);
-      await NotificationService.instance.scheduleClassReminder(session);
+      if (!context.mounted) return;
+      await _syncReminder(context, session);
     } else if (action == 'delete' && context.mounted) {
       await _confirmDelete(context, termId, existing.id);
     }
@@ -204,58 +221,15 @@ class ScheduleScreen extends StatelessWidget {
   }
 }
 
+/// Time format now lives in Settings (see SettingsScreen), so this header
+/// is back to just the title + term selector — no clock icon shortcut.
 class _ScheduleHeader extends StatelessWidget {
   const _ScheduleHeader();
-
-  Future<void> _showTimeFormatPicker(BuildContext context) async {
-    final controller = context.read<TimeFormatController>();
-    await showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (_) => SafeArea(
-        child: Wrap(
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
-              child: Text(
-                'Time Format',
-                style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 16,
-                    color: AppColors.textDark),
-              ),
-            ),
-            RadioListTile<bool>(
-              value: false,
-              groupValue: controller.is24Hour,
-              title: const Text('12-hour (e.g. 1:30 PM)'),
-              onChanged: (_) {
-                controller.setIs24Hour(false);
-                Navigator.pop(context);
-              },
-            ),
-            RadioListTile<bool>(
-              value: true,
-              groupValue: controller.is24Hour,
-              title: const Text('24-hour (e.g. 13:30)'),
-              onChanged: (_) {
-                controller.setIs24Hour(true);
-                Navigator.pop(context);
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
     return Row(
-      children: [       
+      children: [
         const SizedBox(width: 4),
         Expanded(
           child: Text(
@@ -269,14 +243,6 @@ class _ScheduleHeader extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             maxLines: 1,
           ),
-        ),
-        IconButton(
-          icon: const Icon(Icons.access_time_rounded, color: AppColors.navyDark),
-          tooltip: 'Time format',
-          visualDensity: VisualDensity.compact,
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-          onPressed: () => _showTimeFormatPicker(context),
         ),
         const SizedBox(width: 8),
         Flexible(

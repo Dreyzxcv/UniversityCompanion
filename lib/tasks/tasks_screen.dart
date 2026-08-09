@@ -5,6 +5,7 @@ import '../shared/models/class_session.dart';
 import '../shared/services/firestore_service.dart';
 import '../shared/services/term_controller.dart';
 import '../shared/services/notification_service.dart';
+import '../shared/services/notification_preferences.dart';
 import '../shared/theme/app_theme.dart';
 import '../shared/widgets/empty_state.dart';
 import '../shared/widgets/term_selector.dart';
@@ -13,12 +14,29 @@ import 'add_task_sheet.dart';
 class TasksScreen extends StatelessWidget {
   const TasksScreen({super.key});
 
+  Future<void> _syncReminder(BuildContext context, TaskItem task) async {
+    if (task.isCompleted) {
+      await NotificationService.instance.cancelTaskReminder(task.id);
+      return;
+    }
+    final notifPrefs = context.read<NotificationPreferencesController>().prefs;
+    if (notifPrefs.enabled) {
+      await NotificationService.instance.scheduleTaskReminder(
+        task,
+        daysBefore: notifPrefs.taskReminderDaysBefore,
+      );
+    } else {
+      await NotificationService.instance.cancelTaskReminder(task.id);
+    }
+  }
+
   Future<void> _addTask(BuildContext context, String termId, List<ClassSession> classes) async {
     final result = await showAddTaskSheet(context, classes: classes);
     if (result == null || result.task == null || !context.mounted) return;
     final service = context.read<FirestoreService>();
     await service.addTask(termId, result.task!);
-    await NotificationService.instance.scheduleTaskReminder(result.task!);
+    if (!context.mounted) return;
+    await _syncReminder(context, result.task!);
   }
 
   Future<void> _editTask(
@@ -40,18 +58,16 @@ class TasksScreen extends StatelessWidget {
     final task = result.task;
     if (task == null) return;
     await service.updateTask(termId, task);
-    await NotificationService.instance.scheduleTaskReminder(task);
+    if (!context.mounted) return;
+    await _syncReminder(context, task);
   }
 
   Future<void> _toggleComplete(BuildContext context, String termId, TaskItem task) async {
     final updated = task.copyWith(isCompleted: !task.isCompleted);
     final service = context.read<FirestoreService>();
     await service.updateTask(termId, updated);
-    if (updated.isCompleted) {
-      await NotificationService.instance.cancelTaskReminder(task.id);
-    } else {
-      await NotificationService.instance.scheduleTaskReminder(updated);
-    }
+    if (!context.mounted) return;
+    await _syncReminder(context, updated);
   }
 
   Future<void> _deleteTask(BuildContext context, String termId, String taskId) async {

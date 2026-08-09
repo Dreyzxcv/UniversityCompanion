@@ -83,16 +83,16 @@ class NotificationService {
     return (androidGranted ?? true) && (iosGranted ?? true);
   }
 
-  /// Schedules a notification 1 hour before [session] starts,
-  /// repeating weekly.
-  Future<void> scheduleClassReminder(ClassSession session) async {
-    final scheduled = _nextOccurrenceMinusOneHour(session);
-
+  Future<void> scheduleClassReminder(
+    ClassSession session, {
+    int minutesBefore = 60,
+  }) async {
+    final scheduled = _nextOccurrenceMinusOffset(session, minutesBefore);
     if (scheduled == null) return;
 
     await _plugin.zonedSchedule(
       id: _notificationId(session.id),
-      title: '${session.subjectCode} starts in 1 hour',
+      title: '${session.subjectCode} starts in ${_describeMinutes(minutesBefore)}',
       body: '${session.startTime} - ${session.endTime}'
           '${session.room.isNotEmpty ? ' · ${session.room}' : ''}',
       scheduledDate: scheduled,
@@ -109,6 +109,46 @@ class NotificationService {
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
     );
+  }
+
+  String _describeMinutes(int minutes) =>
+    minutes < 60 ? '$minutes min' : '${minutes ~/ 60} hour${minutes >= 120 ? 's' : ''}';
+
+  Future<void> cancelClassReminder(String classId) {
+    return _plugin.cancel(id: _notificationId(classId));
+  }
+
+  Future<void> resyncAll(List<ClassSession> classes, {int minutesBefore = 60}) async {
+    await _plugin.cancelAll();
+    for (final session in classes) {
+      await scheduleClassReminder(session, minutesBefore: minutesBefore);
+    }
+  }
+
+  int _notificationId(String classId) => classId.hashCode & 0x7fffffff;
+
+  tz.TZDateTime? _nextOccurrenceMinusOffset(ClassSession session, int minutesBefore) {
+    const dayCodes = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+    final targetWeekday = dayCodes.indexOf(session.day) + 1;
+    if (targetWeekday == 0) return null;
+
+    final now = tz.TZDateTime.now(tz.local);
+    final startParts = session.startTime.split(':');
+    final startHour = int.tryParse(startParts[0]) ?? 8;
+    final startMinute = int.tryParse(startParts.length > 1 ? startParts[1] : '0') ?? 0;
+
+    for (int daysAhead = 0; daysAhead < 8; daysAhead++) {
+      final candidateDay = now.add(Duration(days: daysAhead));
+      if (candidateDay.weekday != targetWeekday) continue;
+
+      final classStart = tz.TZDateTime(
+        tz.local, candidateDay.year, candidateDay.month, candidateDay.day,
+        startHour, startMinute,
+      );
+      final reminderTime = classStart.subtract(Duration(minutes: minutesBefore));
+      if (reminderTime.isAfter(now)) return reminderTime;
+    }
+    return null;
   }
 
   Future<void> cancelClassReminder(String classId) {

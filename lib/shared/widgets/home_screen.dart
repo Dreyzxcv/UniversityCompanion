@@ -9,9 +9,9 @@ import '../services/term_controller.dart';
 import '../theme/app_theme.dart';
 import '../../profile/profile_screen.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:provider/provider.dart';
 import '../services/time_format_controller.dart';
 import '../utils/time_format.dart';
+import '../../settings/settings_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -213,6 +213,20 @@ class _TopBar extends StatelessWidget {
                     Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.settings_outlined, color: AppColors.navyDark),
+                  title: const Text(
+                    'Settings',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: AppColors.textDark),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const SettingsScreen()),
                     );
                   },
                 ),

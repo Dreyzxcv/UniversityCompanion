@@ -9,6 +9,16 @@ import 'quiz_screen.dart';
 
 enum _NotesSource { pasteText, uploadPdf }
 
+/// One successfully-extracted PDF: its display name plus the text pulled
+/// from it. Kept separate (rather than immediately mashed into one big
+/// string) so individual chapters can be removed later without having to
+/// re-parse the whole combined blob.
+class _PickedPdf {
+  final String name;
+  final String text;
+  const _PickedPdf({required this.name, required this.text});
+}
+
 class AddReviewerScreen extends StatefulWidget {
   const AddReviewerScreen({super.key});
 
@@ -27,8 +37,11 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
 
   // PDF-specific state, kept separate from the generic _error above so
   // switching tabs doesn't leave a stale error from the other mode showing.
+  // Multiple chapter PDFs are supported — one subject often has one file
+  // per chapter (Chapter 1, Chapter 2, ...), so this is a list rather
+  // than a single file.
   bool _extractingPdf = false;
-  String? _pdfFileName;
+  final List<_PickedPdf> _pdfFiles = [];
   String? _pdfError;
 
   @override
@@ -43,13 +56,23 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
     setState(() {
       _source = source;
       _error = null;
-      // Deliberately NOT clearing _textCtrl here: if someone uploads a PDF,
+      // Deliberately NOT clearing _textCtrl here: if someone uploads PDFs,
       // taps back to "Paste Text" to tweak a line, then switches back, the
       // extracted text should still be there rather than forcing a re-upload.
     });
   }
 
-  Future<void> _pickAndExtractPdf() async {
+  /// Recombines every extracted chapter into one source-text blob, each
+  /// clearly labeled by its filename so the quiz generator can tell
+  /// chapters apart (and so a student who peeks at the raw text isn't
+  /// looking at an undifferentiated wall of concatenated PDFs).
+  void _recomputeCombinedText() {
+    _textCtrl.text = _pdfFiles
+        .map((f) => '=== ${f.name} ===\n${f.text}')
+        .join('\n\n');
+  }
+
+  Future<void> _pickAndExtractPdfs() async {
     setState(() {
       _pdfError = null;
       _extractingPdf = true;
@@ -60,6 +83,7 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
         type: FileType.custom,
         allowedExtensions: ['pdf'],
         withData: true,
+        allowMultiple: true,
       );
 
       if (result == null || result.files.isEmpty) {
@@ -68,52 +92,77 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
         return;
       }
 
-      final picked = result.files.single;
-      final bytes = picked.bytes;
-      if (bytes == null) {
-        throw Exception('Could not read the selected file.');
-      }
+      final newlyAdded = <_PickedPdf>[];
+      final skipped = <String>[];
 
-      final document = PdfDocument(inputBytes: bytes);
-      String extracted;
-      try {
-        extracted = PdfTextExtractor(document).extractText();
-      } finally {
-        document.dispose();
-      }
+      for (final picked in result.files) {
+        final bytes = picked.bytes;
+        if (bytes == null) {
+          skipped.add(picked.name);
+          continue;
+        }
 
-      final cleaned = extracted.trim();
+        try {
+          final document = PdfDocument(inputBytes: bytes);
+          String extracted;
+          try {
+            extracted = PdfTextExtractor(document).extractText();
+          } finally {
+            document.dispose();
+          }
 
-      if (cleaned.length < 50) {
-        // Most likely a scanned PDF with no embedded text layer, or an
-        // otherwise near-empty document — nothing worth quizzing on.
-        setState(() {
-          _pdfError = "Couldn't find enough readable text in this PDF. "
-              "It may be a scanned document without selectable text — "
-              "try a PDF exported from Word/Google Docs instead.";
-          _pdfFileName = null;
-          _extractingPdf = false;
-        });
-        return;
+          final cleaned = extracted.trim();
+          if (cleaned.length < 50) {
+            // Most likely a scanned PDF with no embedded text layer, or an
+            // otherwise near-empty document — nothing worth quizzing on.
+            skipped.add(picked.name);
+            continue;
+          }
+
+          newlyAdded.add(_PickedPdf(name: picked.name, text: cleaned));
+        } catch (e) {
+          debugPrint('PDF extraction failed for ${picked.name}: $e');
+          skipped.add(picked.name);
+        }
       }
 
       setState(() {
-        _textCtrl.text = cleaned;
-        _pdfFileName = picked.name;
+        _pdfFiles.addAll(newlyAdded);
+        _recomputeCombinedText();
         _extractingPdf = false;
+        if (skipped.isNotEmpty && newlyAdded.isEmpty) {
+          _pdfError = "Couldn't find enough readable text in "
+              "${skipped.length == 1 ? 'that file' : 'those files'}. "
+              "They may be scanned documents without selectable text — "
+              "try PDFs exported from Word/Google Docs instead.";
+        } else if (skipped.isNotEmpty) {
+          _pdfError = "Skipped ${skipped.length} file"
+              "${skipped.length == 1 ? '' : 's'} with no readable text: "
+              "${skipped.join(', ')}";
+        } else {
+          _pdfError = null;
+        }
       });
     } catch (e) {
-      debugPrint('PDF extraction failed: $e');
+      debugPrint('PDF picking failed: $e');
       setState(() {
-        _pdfError = 'Could not read that PDF. Please try a different file.';
+        _pdfError = 'Could not read those PDFs. Please try again.';
         _extractingPdf = false;
       });
     }
   }
 
-  void _clearPdf() {
+  void _removePdf(int index) {
     setState(() {
-      _pdfFileName = null;
+      _pdfFiles.removeAt(index);
+      _recomputeCombinedText();
+      _pdfError = null;
+    });
+  }
+
+  void _clearAllPdfs() {
+    setState(() {
+      _pdfFiles.clear();
       _pdfError = null;
       _textCtrl.clear();
     });
@@ -122,7 +171,7 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
   Future<void> _generate() async {
     if (_titleCtrl.text.trim().isEmpty || _textCtrl.text.trim().length < 50) {
       setState(() => _error = _source == _NotesSource.uploadPdf
-          ? 'Add a title and upload a PDF with enough readable text.'
+          ? 'Add a title and upload at least one PDF with enough readable text.'
           : 'Add a title and at least a few sentences of notes.');
       return;
     }
@@ -187,7 +236,7 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
             TextField(
               controller: _titleCtrl,
               enabled: !_generating,
-              decoration: const InputDecoration(labelText: 'Title (e.g. "Thermo Ch. 3")'),
+              decoration: const InputDecoration(labelText: 'Title (e.g. "Computer Programming")'),
             ),
             const SizedBox(height: 18),
             const Text(
@@ -209,7 +258,7 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
                 Expanded(
                   child: _SourceToggleChip(
                     icon: Icons.picture_as_pdf_rounded,
-                    label: 'Upload PDF',
+                    label: 'Upload PDFs',
                     selected: _source == _NotesSource.uploadPdf,
                     onTap: _generating ? null : () => _switchSource(_NotesSource.uploadPdf),
                   ),
@@ -230,11 +279,11 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
             else
               _PdfUploadPanel(
                 extracting: _extractingPdf,
-                fileName: _pdfFileName,
-                charCount: _textCtrl.text.trim().length,
+                files: _pdfFiles,
                 error: _pdfError,
-                onPick: _generating ? null : _pickAndExtractPdf,
-                onClear: _generating ? null : _clearPdf,
+                onPick: _generating ? null : _pickAndExtractPdfs,
+                onRemove: _generating ? null : _removePdf,
+                onClearAll: _generating ? null : _clearAllPdfs,
               ),
             const SizedBox(height: 18),
             Text('Number of questions: $_numQuestions',
@@ -283,7 +332,7 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
 }
 
 /// Small pill-style toggle button used to switch between "Paste Text" and
-/// "Upload PDF" — matches the ChoiceChip visual language used elsewhere
+/// "Upload PDFs" — matches the ChoiceChip visual language used elsewhere
 /// in the app (day pickers, grade pickers) rather than a plain TabBar.
 class _SourceToggleChip extends StatelessWidget {
   final IconData icon;
@@ -330,30 +379,33 @@ class _SourceToggleChip extends StatelessWidget {
 }
 
 /// PDF upload state panel: pick button when empty, extracting spinner
-/// mid-pick, and a summary card (filename + extracted length) once text
-/// has been pulled from the file. Text is extracted entirely on-device
-/// before anything is sent to Gemini — the PDF itself never leaves the
-/// phone, only the extracted text does (same as pasted notes).
+/// mid-pick, and a list of extracted chapter files once at least one has
+/// been picked — each with its own char count and remove button, plus an
+/// "Add more PDFs" action so chapters can be added one batch at a time.
+/// Text is extracted entirely on-device before anything is sent to
+/// Gemini — the PDFs themselves never leave the phone, only the
+/// extracted text does (same as pasted notes).
 class _PdfUploadPanel extends StatelessWidget {
   final bool extracting;
-  final String? fileName;
-  final int charCount;
+  final List<_PickedPdf> files;
   final String? error;
   final VoidCallback? onPick;
-  final VoidCallback? onClear;
+  final ValueChanged<int>? onRemove;
+  final VoidCallback? onClearAll;
 
   const _PdfUploadPanel({
     required this.extracting,
-    required this.fileName,
-    required this.charCount,
+    required this.files,
     required this.error,
     required this.onPick,
-    required this.onClear,
+    required this.onRemove,
+    required this.onClearAll,
   });
 
   @override
   Widget build(BuildContext context) {
-    final hasFile = fileName != null;
+    final hasFiles = files.isNotEmpty;
+    final totalChars = files.fold<int>(0, (sum, f) => sum + f.text.length);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -364,7 +416,7 @@ class _PdfUploadPanel extends StatelessWidget {
             color: AppColors.pillLavender.withOpacity(0.6),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: hasFile ? AppColors.excellent.withOpacity(0.4) : AppColors.cardBorder,
+              color: hasFiles ? AppColors.excellent.withOpacity(0.4) : AppColors.cardBorder,
             ),
           ),
           child: extracting
@@ -377,45 +429,26 @@ class _PdfUploadPanel extends StatelessWidget {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     ),
                     SizedBox(width: 12),
-                    Text('Reading PDF…', style: TextStyle(fontWeight: FontWeight.w600)),
+                    Text('Reading PDFs…', style: TextStyle(fontWeight: FontWeight.w600)),
                   ],
                 )
-              : hasFile
-                  ? Row(
+              : hasFiles
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: AppColors.excellent.withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(12),
+                        for (int i = 0; i < files.length; i++) ...[
+                          if (i > 0) const SizedBox(height: 10),
+                          _PdfFileRow(
+                            file: files[i],
+                            onRemove: onRemove == null ? null : () => onRemove!(i),
                           ),
-                          child: const Icon(Icons.picture_as_pdf_rounded,
-                              color: AppColors.excellent, size: 20),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                fileName!,
-                                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                '$charCount characters extracted',
-                                style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
-                              ),
-                            ],
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close_rounded, size: 18),
-                          color: AppColors.textMuted,
-                          tooltip: 'Remove PDF',
-                          onPressed: onClear,
+                        ],
+                        const SizedBox(height: 10),
+                        Container(height: 1, color: AppColors.cardBorder),
+                        const SizedBox(height: 10),
+                        Text(
+                          '${files.length} chapter${files.length == 1 ? '' : 's'} · $totalChars characters total',
+                          style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
                         ),
                       ],
                     )
@@ -424,12 +457,13 @@ class _PdfUploadPanel extends StatelessWidget {
                         const Icon(Icons.upload_file_rounded, color: AppColors.navyDark, size: 28),
                         const SizedBox(height: 10),
                         const Text(
-                          'Upload a PDF of your reviewer',
+                          'Upload one or more PDFs',
                           style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
                         ),
                         const SizedBox(height: 4),
                         const Text(
-                          'Text-based PDFs work best (e.g. exported from Word or Docs).',
+                          'Add a PDF per chapter (Ch. 1, Ch. 2, ...) — text-based PDFs '
+                          'work best, e.g. exported from Word or Docs.',
                           style: TextStyle(fontSize: 11, color: AppColors.textMuted),
                           textAlign: TextAlign.center,
                         ),
@@ -437,20 +471,28 @@ class _PdfUploadPanel extends StatelessWidget {
                         OutlinedButton.icon(
                           onPressed: onPick,
                           icon: const Icon(Icons.folder_open_rounded, size: 18),
-                          label: const Text('Choose PDF File'),
+                          label: const Text('Choose PDF Files'),
                         ),
                       ],
                     ),
         ),
-        if (hasFile && !extracting) ...[
+        if (hasFiles && !extracting) ...[
           const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: onPick,
-              icon: const Icon(Icons.swap_horiz_rounded, size: 16),
-              label: const Text('Choose a different file'),
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              TextButton.icon(
+                onPressed: onClearAll,
+                icon: const Icon(Icons.delete_sweep_outlined, size: 16),
+                label: const Text('Remove all'),
+                style: TextButton.styleFrom(foregroundColor: AppColors.overdue),
+              ),
+              TextButton.icon(
+                onPressed: onPick,
+                icon: const Icon(Icons.add_rounded, size: 16),
+                label: const Text('Add more PDFs'),
+              ),
+            ],
           ),
         ],
         if (error != null) ...[
@@ -467,6 +509,56 @@ class _PdfUploadPanel extends StatelessWidget {
             ),
           ),
         ],
+      ],
+    );
+  }
+}
+
+/// A single extracted-chapter row inside the panel: icon, filename,
+/// char count, and a remove button.
+class _PdfFileRow extends StatelessWidget {
+  final _PickedPdf file;
+  final VoidCallback? onRemove;
+
+  const _PdfFileRow({required this.file, required this.onRemove});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: AppColors.excellent.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: const Icon(Icons.picture_as_pdf_rounded, color: AppColors.excellent, size: 18),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                file.name,
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '${file.text.length} characters',
+                style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+              ),
+            ],
+          ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.close_rounded, size: 18),
+          color: AppColors.textMuted,
+          tooltip: 'Remove ${file.name}',
+          onPressed: onRemove,
+        ),
       ],
     );
   }
