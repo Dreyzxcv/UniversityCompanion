@@ -112,7 +112,7 @@ class NotificationService {
   }
 
   String _describeMinutes(int minutes) =>
-    minutes < 60 ? '$minutes min' : '${minutes ~/ 60} hour${minutes >= 120 ? 's' : ''}';
+      minutes < 60 ? '$minutes min' : '${minutes ~/ 60} hour${minutes >= 120 ? 's' : ''}';
 
   Future<void> cancelClassReminder(String classId) {
     return _plugin.cancel(id: _notificationId(classId));
@@ -151,77 +151,7 @@ class NotificationService {
     return null;
   }
 
-  Future<void> cancelClassReminder(String classId) {
-    return _plugin.cancel(
-      id: _notificationId(classId),
-    );
-  }
-
-  Future<void> resyncAll(List<ClassSession> classes) async {
-    await _plugin.cancelAll();
-
-    for (final session in classes) {
-      await scheduleClassReminder(session);
-    }
-  }
-
-  int _notificationId(String classId) => classId.hashCode & 0x7fffffff;
-
-  tz.TZDateTime? _nextOccurrenceMinusOneHour(
-    ClassSession session,
-  ) {
-    const dayCodes = [
-      'MON',
-      'TUE',
-      'WED',
-      'THU',
-      'FRI',
-      'SAT',
-      'SUN',
-    ];
-
-    final targetWeekday = dayCodes.indexOf(session.day) + 1;
-
-    if (targetWeekday == 0) return null;
-
-    final now = tz.TZDateTime.now(tz.local);
-
-    final startParts = session.startTime.split(':');
-
-    final startHour = int.tryParse(startParts[0]) ?? 8;
-
-    final startMinute = int.tryParse(
-          startParts.length > 1 ? startParts[1] : '0',
-        ) ??
-        0;
-
-    for (int daysAhead = 0; daysAhead < 8; daysAhead++) {
-      final candidateDay = now.add(Duration(days: daysAhead));
-
-      if (candidateDay.weekday != targetWeekday) {
-        continue;
-      }
-
-      final classStart = tz.TZDateTime(
-        tz.local,
-        candidateDay.year,
-        candidateDay.month,
-        candidateDay.day,
-        startHour,
-        startMinute,
-      );
-
-      final reminderTime = classStart.subtract(const Duration(hours: 1));
-
-      if (reminderTime.isAfter(now)) {
-        return reminderTime;
-      }
-    }
-
-    return null;
-  }
-
-  Future<void> scheduleTaskReminder(TaskItem task) async {
+  Future<void> scheduleTaskReminder(TaskItem task, {int daysBefore = 1}) async {
     if (task.isCompleted) {
       await cancelTaskReminder(task.id);
       return;
@@ -229,19 +159,18 @@ class NotificationService {
 
     final due = task.dueDate;
     final reminderTime = tz.TZDateTime(tz.local, due.year, due.month, due.day, 18)
-        .subtract(const Duration(days: 1));
+        .subtract(Duration(days: daysBefore));
 
     if (reminderTime.isBefore(tz.TZDateTime.now(tz.local))) return;
 
     await _plugin.zonedSchedule(
       id: _taskNotificationId(task.id),
-      title: '${task.type.label} due tomorrow',
+      title: '${task.type.label} due ${daysBefore == 1 ? 'tomorrow' : 'in $daysBefore days'}',
       body: task.title,
       scheduledDate: reminderTime,
       notificationDetails: const NotificationDetails(
         android: AndroidNotificationDetails(
-          _channelId,
-          _channelName,
+          _channelId, _channelName,
           channelDescription: _channelDescription,
           importance: Importance.high,
           priority: Priority.high,
