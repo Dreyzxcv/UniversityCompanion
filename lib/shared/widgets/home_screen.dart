@@ -224,9 +224,19 @@ class _TopBar extends StatelessWidget {
                   ),
                   onTap: () {
                     Navigator.pop(context);
+                    final firestoreService = context.read<FirestoreService>();
+                    final termController = context.read<TermController>();
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                      MaterialPageRoute(
+                        builder: (_) => MultiProvider(
+                          providers: [
+                            Provider<FirestoreService>.value(value: firestoreService),
+                            ChangeNotifierProvider<TermController>.value(value: termController),
+                          ],
+                          child: const SettingsScreen(),
+                        ),
+                      ),
                     );
                   },
                 ),

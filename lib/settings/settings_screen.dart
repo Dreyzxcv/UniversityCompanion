@@ -7,6 +7,8 @@ import '../shared/services/notification_preferences.dart';
 import '../shared/services/theme_mode_controller.dart';
 import '../shared/theme/app_theme.dart';
 import 'term_management_screen.dart';
+import '../shared/services/firestore_service.dart';
+import '../shared/services/term_controller.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -196,10 +198,22 @@ class _TermManagementTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const TermManagementScreen()),
-        ),
+        onTap: () {
+          final firestoreService = context.read<FirestoreService>();
+          final termController = context.read<TermController>();
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => MultiProvider(
+                providers: [
+                  Provider<FirestoreService>.value(value: firestoreService),
+                  ChangeNotifierProvider<TermController>.value(value: termController),
+                ],
+                child: const TermManagementScreen(),
+              ),
+            ),
+          );
+        },
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), border: Border.all(color: AppColors.cardBorder)),
@@ -232,13 +246,28 @@ class _TermManagementTile extends StatelessWidget {
 class _AppInfoCard extends StatelessWidget {
   const _AppInfoCard();
 
-  Future<void> _openMail(String subject) async {
+  Future<void> _openMail(BuildContext context, String subject) async {
     final uri = Uri(
       scheme: 'mailto',
-      path: 'support@example.com',
+      path: 'justineandreitacorda@gmail.com',
       query: 'subject=${Uri.encodeComponent(subject)}',
     );
-    if (await canLaunchUrl(uri)) await launchUrl(uri);
+    try {
+      final launched = await launchUrl(uri);
+      if (!launched && context.mounted) {
+        _showNoMailAppMessage(context);
+      }
+    } catch (_) {
+      if (context.mounted) _showNoMailAppMessage(context);
+    }
+  }
+
+  void _showNoMailAppMessage(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('No email app found. You can reach me at justineandreitacorda@gmail.com'),
+      ),
+    );
   }
 
   @override
@@ -264,14 +293,14 @@ class _AppInfoCard extends StatelessWidget {
         leading: const Icon(Icons.feedback_outlined, color: AppColors.navyDark),
         title: const Text('Send Feedback', style: TextStyle(fontWeight: FontWeight.w700)),
         trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
-        onTap: () => _openMail('University Companion — Feedback'),
+        onTap: () => _openMail(context, 'University Companion — Feedback'),
       ),
       ListTile(
         contentPadding: EdgeInsets.zero,
         leading: const Icon(Icons.bug_report_outlined, color: AppColors.navyDark),
         title: const Text('Report a Bug', style: TextStyle(fontWeight: FontWeight.w700)),
         trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
-        onTap: () => _openMail('University Companion — Bug Report'),
+        onTap: () => _openMail(context, 'University Companion — Bug Report'),
       ),
     ]);
   }
