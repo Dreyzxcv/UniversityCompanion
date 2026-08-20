@@ -34,6 +34,10 @@ class _MainShellState extends State<MainShell> {
     _NavTab(Icons.calculate_outlined, Icons.calculate_rounded, 'QPI Calc'),
   ];
 
+  void _switchTab(int index) {
+    setState(() => _index = index);
+  }
+
   @override
   Widget build(BuildContext context) {
     final firestoreService = context.read<FirestoreService>();
@@ -44,12 +48,12 @@ class _MainShellState extends State<MainShell> {
         extendBody: true,
         body: IndexedStack(
           index: _index,
-          children: const [
-            HomeScreen(),
-            ScheduleScreen(),
-            TasksScreen(),
-            ReviewerListScreen(),
-            QpiScreen(),
+          children: [
+            HomeScreen(onSwitchTab: _switchTab),
+            const ScheduleScreen(),
+            const TasksScreen(),
+            const ReviewerListScreen(),
+            const QpiScreen(),
           ],
         ),
         bottomNavigationBar: SafeArea(
