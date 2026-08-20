@@ -143,81 +143,141 @@ class _QuickActionsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        _QuickAction(
-          icon: Icons.assignment_add,
-          label: 'Add Task',
-          color: const Color(0xFFFFECEB),
-          iconColor: AppColors.overdue,
-          onTap: () async {
-            final termController = context.read<TermController>();
-            final termId = termController.selectedTermId;
-            if (termId == null) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Create a term first.')),
-              );
-              return;
-            }
-            final firestoreService = context.read<FirestoreService>();
-            final classes = await firestoreService.fetchClassesOnce(termId);
-            if (!context.mounted) return;
-            final result = await showAddTaskSheet(context, classes: classes);
-            if (result?.task == null || !context.mounted) return;
-            await firestoreService.addTask(termId, result!.task!);
-          },
-        ),
-        const SizedBox(width: 10),
-        _QuickAction(
-          icon: Icons.calendar_month_rounded,
-          label: 'Add Class',
-          color: AppColors.pillLavender,
-          iconColor: AppColors.navyDark,
-          onTap: () async {
-            final termController = context.read<TermController>();
-            final termId = termController.selectedTermId;
-            if (termId == null) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Create a term first.')),
-              );
-              return;
-            }
-            final firestoreService = context.read<FirestoreService>();
-            final classes = await firestoreService.fetchClassesOnce(termId);
-            if (!context.mounted) return;
-            final result = await Navigator.push<ClassFormResult>(
-              context,
-              MaterialPageRoute(
-                builder: (_) => ClassFormScreen(allClassesInTerm: classes),
-              ),
-            );
-            if (result == null || !context.mounted) return;
-            for (final session in result.sessions) {
-              await firestoreService.addClass(termId, session);
-            }
-          },
-        ),
-        const SizedBox(width: 10),
-        _QuickAction(
-          icon: Icons.auto_awesome_rounded,
-          label: 'New Quiz',
-          color: const Color(0xFFE8F5E9),
-          iconColor: AppColors.excellent,
-          onTap: () {
-            // Navigate to the Review tab (index 3)
-            if (onSwitchTab != null) {
-              onSwitchTab!(3);
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Go to the Review tab to create a quiz.'),
-                  behavior: SnackBarBehavior.floating,
+    final isDark = context.isDark;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      decoration: BoxDecoration(
+        color: context.cardBg,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: context.cardBorderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: context.pillBg,
+                  borderRadius: BorderRadius.circular(10),
                 ),
-              );
-            }
-          },
-        ),
-      ],
+                child: Icon(
+                  Icons.bolt_rounded,
+                  color: context.accent,
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Quick Actions',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                  color: context.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          // Action tiles
+          Row(
+            children: [
+              Expanded(
+                child: _QuickAction(
+                  icon: Icons.assignment_add,
+                  label: 'Add Task',
+                  accent: AppColors.overdue,
+                  accentBg: isDark
+                      ? AppColors.overdue.withOpacity(0.15)
+                      : const Color(0xFFFFECEB),
+                  onTap: () async {
+                    final termController = context.read<TermController>();
+                    final termId = termController.selectedTermId;
+                    if (termId == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Create a term first.')),
+                      );
+                      return;
+                    }
+                    final firestoreService = context.read<FirestoreService>();
+                    final classes =
+                        await firestoreService.fetchClassesOnce(termId);
+                    if (!context.mounted) return;
+                    final result =
+                        await showAddTaskSheet(context, classes: classes);
+                    if (result?.task == null || !context.mounted) return;
+                    await firestoreService.addTask(termId, result!.task!);
+                  },
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _QuickAction(
+                  icon: Icons.calendar_month_rounded,
+                  label: 'Add Class',
+                  accent: AppColors.navyDark,
+                  accentBg: isDark
+                      ? AppColorsDark.pillLavender
+                      : AppColors.pillLavender,
+                  onTap: () async {
+                    final termController = context.read<TermController>();
+                    final termId = termController.selectedTermId;
+                    if (termId == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Create a term first.')),
+                      );
+                      return;
+                    }
+                    final firestoreService = context.read<FirestoreService>();
+                    final classes =
+                        await firestoreService.fetchClassesOnce(termId);
+                    if (!context.mounted) return;
+                    final result = await Navigator.push<ClassFormResult>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            ClassFormScreen(allClassesInTerm: classes),
+                      ),
+                    );
+                    if (result == null || !context.mounted) return;
+                    for (final session in result.sessions) {
+                      await firestoreService.addClass(termId, session);
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _QuickAction(
+                  icon: Icons.auto_awesome_rounded,
+                  label: 'New Quiz',
+                  accent: AppColors.excellent,
+                  accentBg: isDark
+                      ? AppColors.excellent.withOpacity(0.15)
+                      : const Color(0xFFE8F5E9),
+                  onTap: () {
+                    if (onSwitchTab != null) {
+                      onSwitchTab!(3);
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content:
+                              Text('Go to the Review tab to create a quiz.'),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
@@ -225,45 +285,54 @@ class _QuickActionsRow extends StatelessWidget {
 class _QuickAction extends StatelessWidget {
   final IconData icon;
   final String label;
-  final Color color;
-  final Color iconColor;
+  final Color accent;
+  final Color accentBg;
   final VoidCallback onTap;
 
   const _QuickAction({
     required this.icon,
     required this.label,
-    required this.color,
-    required this.iconColor,
+    required this.accent,
+    required this.accentBg,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Material(
-        color: color,
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, color: iconColor, size: 24),
-                const SizedBox(height: 6),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: iconColor,
-                  ),
-                  textAlign: TextAlign.center,
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+          decoration: BoxDecoration(
+            color: accentBg,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                child: Icon(icon, color: accent, size: 20),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: accent,
+                  letterSpacing: 0.1,
                 ),
-              ],
-            ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
           ),
         ),
       ),
@@ -454,6 +523,44 @@ class _MascotCardState extends State<_MascotCard>
   late final AnimationController _bounceCtrl;
   late final Animation<double> _bounceAnim;
 
+  // 0 = show context message, 1+ = index into _funMessages
+  int _messageIndex = 0;
+  bool _showingFun = false;
+
+  static const _funMessages = [
+    "Don't forget to review your notes today! 📖",
+    "One subject at a time. You've got this! 💪",
+    "Take a 5-minute break if you need it. ☕",
+    "Consistency beats cramming every time! 🧠",
+    "I believe in you more than you believe in yourself. ",
+    "Sleep is part of studying too, you know. 🌙",
+    "Koko has never failed an exam.",
+    "You came this far. Don't stop now. 🏁",
+    "Did you drink water today? Hydration = brain power! 💧",
+    "Your future self will thank you for studying now. ✨",
+    "Grades don't define you, but effort does. 🌱",
+    "Pro tip: rewriting notes = better retention! ✍️",
+    "Koko is rooting for you. Always. 🐾",
+    "Hard days are part of the journey too. 🌤️",
+    "You're doing better than you think. Keep going! 💖",
+  ];
+
+  String get _currentMessage {
+    if (!_showingFun) return _contextMessage;
+    return _funMessages[_messageIndex % _funMessages.length];
+  }
+
+  void _onBubbleTap() {
+    setState(() {
+      if (!_showingFun) {
+        _showingFun = true;
+        _messageIndex = 0;
+      } else {
+        _messageIndex = (_messageIndex + 1) % _funMessages.length;
+      }
+    });
+  }
+
   String get _greeting {
     final hour = DateTime.now().hour;
     if (hour < 12) return 'Good morning';
@@ -477,20 +584,22 @@ class _MascotCardState extends State<_MascotCard>
     );
     final upcoming = todays.where((c) => c.startMinutes > nowMinutes);
 
-    // Urgent tasks: overdue or due today, not completed
     final urgentTasks = widget.tasks
         .where((t) => !t.isCompleted && (t.isDueToday || t.isOverdue))
         .toList();
     final overdueCount = urgentTasks.where((t) => t.isOverdue).length;
-    final todayCount = urgentTasks.where((t) => t.isDueToday && !t.isOverdue).length;
+    final todayCount =
+        urgentTasks.where((t) => t.isDueToday && !t.isOverdue).length;
 
     String taskNote = '';
     if (overdueCount > 0 && todayCount > 0) {
       taskNote = '\n$overdueCount overdue, $todayCount due today! 📋';
     } else if (overdueCount > 0) {
-      taskNote = '\n$overdueCount task${overdueCount > 1 ? 's' : ''} overdue! 📋';
+      taskNote =
+          '\n$overdueCount task${overdueCount > 1 ? 's' : ''} overdue! 📋';
     } else if (todayCount > 0) {
-      taskNote = '\n$todayCount task${todayCount > 1 ? 's' : ''} due today. 📋';
+      taskNote =
+          '\n$todayCount task${todayCount > 1 ? 's' : ''} due today. 📋';
     }
 
     if (ongoing.isNotEmpty) {
@@ -512,12 +621,13 @@ class _MascotCardState extends State<_MascotCard>
       return "All done for today!\nRest up and recharge. 🌙$taskNote";
     }
 
-    final hour = now.hour;
     if (taskNote.isNotEmpty) {
-      // Lead with the task urgency if there's nothing class-related to say
-      if (overdueCount > 0) return "Heads up! You have $overdueCount overdue task${overdueCount > 1 ? 's' : ''}.\nBetter get to it! 📋";
+      if (overdueCount > 0)
+        return "Heads up! You have $overdueCount overdue task${overdueCount > 1 ? 's' : ''}.\nBetter get to it! 📋";
       return "You have $todayCount task${todayCount > 1 ? 's' : ''} due today.\nGood luck! 📋";
     }
+
+    final hour = now.hour;
     if (hour < 12) return "No classes today!\nA great day to review. 📖";
     if (hour < 17) return "Free afternoon!\nPerfect study time. ☕";
     return "No classes today!\nEnjoy your evening~ 🌟";
@@ -547,9 +657,9 @@ class _MascotCardState extends State<_MascotCard>
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.cardBg,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.cardBorder),
+        border: Border.all(color: context.cardBorderColor),
         boxShadow: [
           BoxShadow(
             color: AppColors.navyDark.withOpacity(0.07),
@@ -563,9 +673,9 @@ class _MascotCardState extends State<_MascotCard>
         children: [
           RichText(
             text: TextSpan(
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 20,
-                color: AppColors.textDark,
+                color: context.textPrimary,
                 fontWeight: FontWeight.w400,
                 fontFamily: 'Roboto',
               ),
@@ -573,9 +683,9 @@ class _MascotCardState extends State<_MascotCard>
                 TextSpan(text: '$_greeting, '),
                 TextSpan(
                   text: '${widget.firstName}!',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w900,
-                    color: AppColors.navyDark,
+                    color: context.accent,
                   ),
                 ),
               ],
@@ -584,9 +694,9 @@ class _MascotCardState extends State<_MascotCard>
           const SizedBox(height: 4),
           Text(
             DateFormat('EEEE, MMMM d').format(DateTime.now()),
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
-              color: AppColors.textMuted,
+              color: context.textSecondary,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -606,7 +716,13 @@ class _MascotCardState extends State<_MascotCard>
               ),
               const SizedBox(width: 14),
               Expanded(
-                child: _SpeechBubble(message: _contextMessage),
+                child: _SpeechBubble(
+                  message: _currentMessage,
+                  showingFun: _showingFun,
+                  funIndex: _messageIndex,
+                  totalFun: _funMessages.length,
+                  onTap: _onBubbleTap,
+                ),
               ),
             ],
           ),
@@ -678,61 +794,117 @@ class _MascotFigure extends StatelessWidget {
 
 class _SpeechBubble extends StatelessWidget {
   final String message;
-  const _SpeechBubble({required this.message});
+  final bool showingFun;
+  final int funIndex;
+  final int totalFun;
+  final VoidCallback onTap;
+
+  const _SpeechBubble({
+    required this.message,
+    required this.showingFun,
+    required this.funIndex,
+    required this.totalFun,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            color: AppColors.pillLavender,
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(4),
-              topRight: Radius.circular(18),
-              bottomLeft: Radius.circular(18),
-              bottomRight: Radius.circular(18),
+        GestureDetector(
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.pillLavender,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(4),
+                topRight: Radius.circular(18),
+                bottomLeft: Radius.circular(18),
+                bottomRight: Radius.circular(18),
+              ),
+              border:
+                  Border.all(color: AppColors.navyDark.withOpacity(0.07)),
             ),
-            border: Border.all(color: AppColors.navyDark.withOpacity(0.07)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 6,
-                    height: 6,
-                    decoration: const BoxDecoration(
-                      color: AppColors.navyDark,
-                      shape: BoxShape.circle,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: const BoxDecoration(
+                        color: AppColors.navyDark,
+                        shape: BoxShape.circle,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 6),
-                  const Text(
-                    'Koko says',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.navyDark,
-                      letterSpacing: 0.3,
+                    const SizedBox(width: 6),
+                    const Text(
+                      'Koko says',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.navyDark,
+                        letterSpacing: 0.3,
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                message,
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: AppColors.textDark,
-                  height: 1.45,
-                  fontWeight: FontWeight.w500,
+                    const Spacer(),
+                    // Dot indicators when cycling fun messages
+                    if (showingFun) ...[
+                      ...List.generate(
+                        totalFun.clamp(0, 5), // max 5 dots shown
+                        (i) => Container(
+                          width: 5,
+                          height: 5,
+                          margin: const EdgeInsets.only(left: 3),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: i == funIndex % 5
+                                ? AppColors.navyDark
+                                : AppColors.navyDark.withOpacity(0.2),
+                          ),
+                        ),
+                      ),
+                    ] else ...[
+                      Icon(
+                        Icons.touch_app_rounded,
+                        size: 12,
+                        color: AppColors.navyDark.withOpacity(0.35),
+                      ),
+                    ],
+                  ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 6),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  switchInCurve: Curves.easeOut,
+                  switchOutCurve: Curves.easeIn,
+                  transitionBuilder: (child, anim) => FadeTransition(
+                    opacity: anim,
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(0, 0.15),
+                        end: Offset.zero,
+                      ).animate(anim),
+                      child: child,
+                    ),
+                  ),
+                  child: Text(
+                    message,
+                    key: ValueKey(message),
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textDark,
+                      height: 1.45,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
         Positioned(
