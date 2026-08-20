@@ -82,6 +82,12 @@ class FirestoreService {
     await batch.commit();
   }
 
+  Future<List<ClassSession>> fetchActiveTermClasses() async {
+    final snap = await _terms.where('isActive', isEqualTo: true).limit(1).get();
+    if (snap.docs.isEmpty) return [];
+    return fetchClassesOnce(snap.docs.first.id);
+  }
+
   Future<void> renameTerm(String termId, {required String name, required String schoolYear}) {
     return _terms.doc(termId).update({'name': name, 'schoolYear': schoolYear});
   }
