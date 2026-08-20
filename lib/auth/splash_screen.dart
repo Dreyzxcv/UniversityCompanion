@@ -13,6 +13,8 @@ import 'login_screen.dart';
 ///  2. The logo resolves from blurred to sharp as it lands (Hero-tagged
 ///     'app-logo' so it continues into LoginScreen's header).
 ///  3. The title types on letter-by-letter with a staggered rise.
+///  4. Once landed, the logo gently "waves" (tilts side to side) until
+///     the screen navigates away.
 /// Then hands off to [AuthGate].
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -22,7 +24,7 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   static const _title = 'UNIVERSITY COMPANION';
 
   late final AnimationController _controller;
@@ -33,6 +35,12 @@ class _SplashScreenState extends State<SplashScreen>
   late final Animation<double> _logoProgress;
   // Title letters stagger in during the back half.
   late final Animation<double> _textProgress;
+
+  // Separate looping controller for the post-landing "wave" tilt, kept
+  // independent of _controller so it can run indefinitely without
+  // affecting the one-shot entrance timeline.
+  late final AnimationController _waveController;
+  late final Animation<double> _waveAngle;
 
   @override
   void initState() {
@@ -55,13 +63,33 @@ class _SplashScreenState extends State<SplashScreen>
       curve: const Interval(0.55, 1.0, curve: Curves.easeOut),
     );
 
+    _waveController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    _waveAngle = Tween<double>(begin: -0.12, end: 0.12).animate(
+      CurvedAnimation(parent: _waveController, curve: Curves.easeInOut),
+    );
+
     _controller.forward();
     _goToNextScreen();
+
+    // Start waving once the logo has mostly landed (scale/blur settle
+    // around the 75% mark of the 1400ms entrance, i.e. ~1050ms in).
+    Future.delayed(const Duration(milliseconds: 1050), () {
+      if (mounted) _waveController.repeat(reverse: true);
+    });
   }
 
   Future<void> _goToNextScreen() async {
     // Hold a beat after the entrance finishes before handing off.
     await Future.delayed(const Duration(milliseconds: 2200));
+    if (!mounted) return;
+
+    // Stop the wave and settle back to 0 before the Hero flight starts,
+    // so the logo isn't mid-tilt while flying into LoginScreen.
+    _waveController.stop();
+    await _waveController.animateTo(0.5, duration: const Duration(milliseconds: 150));
     if (!mounted) return;
 
     // Route straight to LoginScreen when logged out so its Hero-tagged
@@ -86,6 +114,7 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void dispose() {
     _controller.dispose();
+    _waveController.dispose();
     super.dispose();
   }
 
@@ -95,7 +124,7 @@ class _SplashScreenState extends State<SplashScreen>
       backgroundColor: AppColors.navyDark,
       body: Center(
         child: AnimatedBuilder(
-          animation: _controller,
+          animation: Listenable.merge([_controller, _waveController]),
           builder: (context, _) {
             return Column(
               mainAxisSize: MainAxisSize.min,
@@ -112,8 +141,11 @@ class _SplashScreenState extends State<SplashScreen>
                           size: const Size(180, 180),
                           painter: _OrbitPainter(t: _ringProgress.value),
                         ),
-                      // Logo: blur-to-focus + elastic scale-in.
-                      _BlurringLogo(t: _logoProgress.value),
+                      // Logo: blur-to-focus + elastic scale-in, then waves.
+                      _BlurringLogo(
+                        t: _logoProgress.value,
+                        waveAngle: _waveAngle.value,
+                      ),
                     ],
                   ),
                 ),
@@ -158,10 +190,13 @@ class _OrbitPainter extends CustomPainter {
   bool shouldRepaint(covariant _OrbitPainter oldDelegate) => oldDelegate.t != t;
 }
 
-/// Logo that resolves from blurred/small to sharp/full-size.
+/// Logo that resolves from blurred/small to sharp/full-size, then gently
+/// tilts side to side ("waves") once landed. The wave amplitude is
+/// scaled by [t] so it ramps in smoothly rather than snapping on.
 class _BlurringLogo extends StatelessWidget {
-  final double t; // 0 -> 1
-  const _BlurringLogo({required this.t});
+  final double t; // 0 -> 1, entrance progress
+  final double waveAngle; // radians, oscillates -0.12..0.12 once landed
+  const _BlurringLogo({required this.t, this.waveAngle = 0});
 
   @override
   Widget build(BuildContext context) {
@@ -171,27 +206,31 @@ class _BlurringLogo extends StatelessWidget {
 
     return Opacity(
       opacity: Curves.easeIn.transform(clamped),
-      child: Transform.scale(
-        scale: scale,
-        child: ImageFiltered(
-          imageFilter: ui.ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
-          child: Hero(
-            tag: 'app-logo',
-            child: Container(
-              width: 110,
-              height: 110,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(28),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.25),
-                    blurRadius: 20,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
+      child: Transform.rotate(
+        angle: waveAngle * clamped, // no wave until mostly landed
+        alignment: Alignment.bottomCenter,
+        child: Transform.scale(
+          scale: scale,
+          child: ImageFiltered(
+            imageFilter: ui.ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+            child: Hero(
+              tag: 'app-logo',
+              child: Container(
+                width: 110,
+                height: 110,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(28),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.25),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Image.asset('lib/images/logo.png', fit: BoxFit.cover),
               ),
-              clipBehavior: Clip.antiAlias,
-              child: Image.asset('lib/images/logo.png', fit: BoxFit.cover),
             ),
           ),
         ),

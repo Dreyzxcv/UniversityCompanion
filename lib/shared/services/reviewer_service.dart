@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_ai/firebase_ai.dart';
+import 'package:http/http.dart' as http;
+import 'groq_config.dart';
 import '../models/reviewer.dart';
 import '../models/quiz_question.dart';
 import '../models/quiz_attempt.dart';
@@ -38,8 +39,8 @@ class ReviewerService {
         );
   }
 
-  /// Generates a quiz from [sourceText] via Gemini, saves the reviewer +
-  /// its questions to Firestore, and returns the new reviewer id.
+  /// Generates a quiz from [sourceText] via Groq (Llama 3.3 70B), saves the
+  /// reviewer + its questions to Firestore, and returns the new reviewer id.
   Future<String> generateQuizFromText({
     required String title,
     required String sourceText,
@@ -49,7 +50,7 @@ class ReviewerService {
     int numIdentification = 3,
     int numEnumeration = 2,
   }) async {
-    final questions = await _callGemini(
+    final questions = await _callGroq(
       sourceText: sourceText,
       numQuestions: numQuestions,
       numMcq: numMcq,
@@ -78,69 +79,98 @@ class ReviewerService {
     return reviewerRef.id;
   }
 
-  Future<List<QuizQuestion>> _callGemini({
+  static const _groqEndpoint =
+      'https://api.groq.com/openai/v1/chat/completions';
+
+  Future<List<QuizQuestion>> _callGroq({
     required String sourceText,
     required int numQuestions,
     required int numMcq,
     required int numIdentification,
     required int numEnumeration,
   }) async {
-    final model = FirebaseAI.googleAI().generativeModel(
-      model: 'gemini-3.5-flash-lite',
-      generationConfig: GenerationConfig(
-        responseMimeType: 'application/json',
-        responseSchema: Schema.object(
-          properties: {
-            'questions': Schema.array(
-              items: Schema.object(
-                properties: {
-                  'type': Schema.enumString(
-                    enumValues: [
-                      'multiple_choice',
-                      'identification',
-                      'enumeration',
-                    ],
-                  ),
-                  'prompt': Schema.string(),
-                  'choices': Schema.array(
-                    items: Schema.string(),
-                    nullable: true,
-                  ),
-                  'correct_answers': Schema.array(items: Schema.string()),
-                  'explanation': Schema.string(),
-                },
-                optionalProperties: ['choices'],
-              ),
-            ),
-          },
-        ),
-      ),
+    if (groqApiKey == 'PASTE_YOUR_GROQ_KEY_HERE') {
+      throw Exception(
+        'Groq API key not set. Add your key from '
+        'https://console.groq.com/keys to '
+        'lib/shared/services/groq_config.dart',
+      );
+    }
+
+    final systemPrompt = '''
+You are a strict JSON API. Respond with ONLY a single valid JSON object.
+No prose, no explanation, no markdown formatting, no code fences.
+The JSON object must have exactly this shape:
+{
+  "questions": [
+    {
+      "type": "multiple_choice" | "identification" | "enumeration",
+      "prompt": "string",
+      "choices": ["string", "string", "string", "string"] or null (only for multiple_choice),
+      "correct_answers": ["string"],
+      "explanation": "string"
+    }
+  ]
+}
+''';
+
+    final userPrompt = '''
+You are a quiz generator for a university study app used by Philippine college students. Your job is to convert a student's reviewer/notes into a structured practice quiz.
+
+INSTRUCTIONS:
+1. Read the reviewer content carefully and identify the key concepts, definitions, facts, and relationships worth testing.
+2. Generate exactly $numQuestions questions total, distributed across these types:
+  - Multiple choice ($numMcq questions): 4 plausible choices, only ONE correct. Wrong choices must be genuinely plausible, drawn from related concepts in the material.
+  - Identification ($numIdentification questions): a short factual prompt with one clear, concise correct answer.
+  - Enumeration ($numEnumeration questions): ask the student to list multiple related items. Provide the FULL correct list.
+3. Base every question strictly on the provided reviewer content. Do not introduce outside facts.
+4. Vary difficulty: mix recall-level and understanding-level questions.
+5. For each question, include a one-sentence explanation referencing the source material.
+6. If the content is too short for $numQuestions good questions, generate fewer rather than padding with filler.
+7. Write all questions and answers in the same language as the reviewer content.
+
+Reviewer content:
+$sourceText
+''';
+
+    final response = await http.post(
+      Uri.parse(_groqEndpoint),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $groqApiKey',
+      },
+      body: jsonEncode({
+        'model': 'llama-3.3-70b-versatile',
+        'messages': [
+          {'role': 'system', 'content': systemPrompt},
+          {'role': 'user', 'content': userPrompt},
+        ],
+        'response_format': {'type': 'json_object'},
+        'temperature': 0.4,
+      }),
     );
 
-    final prompt = '''
-      You are a quiz generator for a university study app used by Philippine college students. Your job is to convert a student's reviewer/notes into a structured practice quiz.
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Groq request failed (${response.statusCode}): ${response.body}',
+      );
+    }
 
-      INSTRUCTIONS:
-      1. Read the reviewer content carefully and identify the key concepts, definitions, facts, and relationships worth testing.
-      2. Generate exactly $numQuestions questions total, distributed across these types:
-        - Multiple choice ($numMcq questions): 4 plausible choices, only ONE correct. Wrong choices must be genuinely plausible, drawn from related concepts in the material.
-        - Identification ($numIdentification questions): a short factual prompt with one clear, concise correct answer.
-        - Enumeration ($numEnumeration questions): ask the student to list multiple related items. Provide the FULL correct list.
-      3. Base every question strictly on the provided reviewer content. Do not introduce outside facts.
-      4. Vary difficulty: mix recall-level and understanding-level questions.
-      5. For each question, include a one-sentence explanation referencing the source material.
-      6. If the content is too short for $numQuestions good questions, generate fewer rather than padding with filler.
-      7. Write all questions and answers in the same language as the reviewer content.
-
-      Reviewer content:
-      $sourceText
-    ''';
-
-    final response = await model.generateContent([Content.text(prompt)]);
-    final raw = response.text;
-    if (raw == null || raw.isEmpty) {
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final choices = body['choices'] as List?;
+    if (choices == null || choices.isEmpty) {
       throw Exception('Empty response from quiz generator.');
     }
+
+    var raw = (choices.first['message']?['content'] as String?)?.trim() ?? '';
+    if (raw.isEmpty) {
+      throw Exception('Empty response from quiz generator.');
+    }
+
+    // Safety net: strip accidental ```json fences even though the model
+    // was told not to include them.
+    raw = raw.replaceAll(RegExp(r'^```(json)?', multiLine: true), '');
+    raw = raw.replaceAll(RegExp(r'```$', multiLine: true), '').trim();
 
     final parsed = jsonDecode(raw) as Map<String, dynamic>;
     final rawQuestions = parsed['questions'] as List? ?? [];
