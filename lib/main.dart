@@ -11,6 +11,7 @@ import 'shared/services/notification_service.dart';
 import 'shared/services/time_format_controller.dart';
 import 'shared/services/notification_preferences.dart';
 import 'shared/services/theme_mode_controller.dart';
+import 'shared/services/schedule_display_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,11 +25,13 @@ Future<void> main() async {
   final timeFormatController = await TimeFormatController.load();
   final notificationPrefsController = await NotificationPreferencesController.load();
   final themeModeController = await ThemeModeController.load();
+  final scheduleDisplayController = await ScheduleDisplayController.load();
 
   runApp(UniversityCompanionApp(
     timeFormatController: timeFormatController,
     notificationPrefsController: notificationPrefsController,
     themeModeController: themeModeController,
+    scheduleDisplayController: scheduleDisplayController,
   ));
 }
 
@@ -36,12 +39,14 @@ class UniversityCompanionApp extends StatelessWidget {
   final TimeFormatController timeFormatController;
   final NotificationPreferencesController notificationPrefsController;
   final ThemeModeController themeModeController;
+  final ScheduleDisplayController scheduleDisplayController;
 
   const UniversityCompanionApp({
     super.key,
     required this.timeFormatController,
     required this.notificationPrefsController,
     required this.themeModeController,
+    required this.scheduleDisplayController,
   });
 
   @override
@@ -52,6 +57,7 @@ class UniversityCompanionApp extends StatelessWidget {
         ChangeNotifierProvider<TimeFormatController>.value(value: timeFormatController),
         ChangeNotifierProvider<NotificationPreferencesController>.value(value: notificationPrefsController),
         ChangeNotifierProvider<ThemeModeController>.value(value: themeModeController),
+        ChangeNotifierProvider<ScheduleDisplayController>.value(value: scheduleDisplayController),
       ],
       child: Consumer<ThemeModeController>(
         builder: (context, themeCtrl, _) {
