@@ -12,6 +12,9 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../services/time_format_controller.dart';
 import '../utils/time_format.dart';
 import '../../settings/settings_screen.dart';
+import '../../tasks/add_task_sheet.dart';
+import '../../schedule/class_form_screen.dart';
+import '../models/task_item.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -30,8 +33,6 @@ class HomeScreen extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
           children: [
             _TopBar(onLogout: auth.logOut),
-            const SizedBox(height: 16),
-            const _DatePill(),
             const SizedBox(height: 16),
 
             // Mascot greeting card
@@ -59,6 +60,31 @@ class HomeScreen extends StatelessWidget {
             if (user != null) _SchoolCard(uid: user.uid),
             const SizedBox(height: 16),
 
+            // Quick actions row
+            const _QuickActionsRow(),
+            const SizedBox(height: 16),
+
+            // Urgent tasks badge (overdue + due today)
+            if (termId != null)
+              StreamBuilder<List<TaskItem>>(
+                stream: firestoreService.watchTasks(termId),
+                builder: (context, snapshot) {
+                  final tasks = snapshot.data ?? [];
+                  final urgent = tasks
+                      .where((t) =>
+                          !t.isCompleted && (t.isDueToday || t.isOverdue))
+                      .toList()
+                    ..sort((a, b) => a.dueDate.compareTo(b.dueDate));
+                  if (urgent.isEmpty) return const SizedBox.shrink();
+                  return Column(
+                    children: [
+                      _UrgentTasksCard(tasks: urgent),
+                      const SizedBox(height: 16),
+                    ],
+                  );
+                },
+              ),
+
             // Next class hero
             termId == null
                 ? const _NoTermHero()
@@ -70,6 +96,7 @@ class HomeScreen extends StatelessWidget {
                   ),
             const SizedBox(height: 16),
 
+            // Today's classes — all of them, with past ones dimmed
             if (termId != null)
               StreamBuilder<List<ClassSession>>(
                 stream: firestoreService.watchClasses(termId),
@@ -85,7 +112,256 @@ class HomeScreen extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Loads the user's first name then hands off to the mascot card
+// Quick Actions Row
+// ---------------------------------------------------------------------------
+
+class _QuickActionsRow extends StatelessWidget {
+  const _QuickActionsRow();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        _QuickAction(
+          icon: Icons.assignment_add,
+          label: 'Add Task',
+          color: const Color(0xFFFFECEB),
+          iconColor: AppColors.overdue,
+          onTap: () async {
+            final termController = context.read<TermController>();
+            final termId = termController.selectedTermId;
+            if (termId == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Create a term first.')),
+              );
+              return;
+            }
+            final firestoreService = context.read<FirestoreService>();
+            final classes = await firestoreService.fetchClassesOnce(termId);
+            if (!context.mounted) return;
+            final result = await showAddTaskSheet(context, classes: classes);
+            if (result?.task == null || !context.mounted) return;
+            await firestoreService.addTask(termId, result!.task!);
+          },
+        ),
+        const SizedBox(width: 10),
+        _QuickAction(
+          icon: Icons.calendar_month_rounded,
+          label: 'Add Class',
+          color: AppColors.pillLavender,
+          iconColor: AppColors.navyDark,
+          onTap: () async {
+            final termController = context.read<TermController>();
+            final termId = termController.selectedTermId;
+            if (termId == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Create a term first.')),
+              );
+              return;
+            }
+            final firestoreService = context.read<FirestoreService>();
+            final classes = await firestoreService.fetchClassesOnce(termId);
+            if (!context.mounted) return;
+            final result = await Navigator.push<ClassFormResult>(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ClassFormScreen(allClassesInTerm: classes),
+              ),
+            );
+            if (result == null || !context.mounted) return;
+            for (final session in result.sessions) {
+              await firestoreService.addClass(termId, session);
+            }
+          },
+        ),
+        const SizedBox(width: 10),
+        _QuickAction(
+          icon: Icons.auto_awesome_rounded,
+          label: 'New Quiz',
+          color: const Color(0xFFE8F5E9),
+          iconColor: AppColors.excellent,
+          onTap: () {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Go to the Review tab to create a quiz.'),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _QuickAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final Color iconColor;
+  final VoidCallback onTap;
+
+  const _QuickAction({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.iconColor,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Material(
+        color: color,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: iconColor, size: 24),
+                const SizedBox(height: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: iconColor,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Urgent Tasks Card (overdue + due today)
+// ---------------------------------------------------------------------------
+
+class _UrgentTasksCard extends StatelessWidget {
+  final List<TaskItem> tasks;
+  const _UrgentTasksCard({required this.tasks});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.overdue.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.overdue.withOpacity(0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: AppColors.overdue.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.warning_amber_rounded,
+                    color: AppColors.overdue, size: 18),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  tasks.any((t) => t.isOverdue)
+                      ? 'Overdue & Due Today'
+                      : 'Due Today',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                    color: AppColors.overdue,
+                  ),
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppColors.overdue,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '${tasks.length}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...tasks.take(3).map((t) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      t.isOverdue
+                          ? Icons.cancel_rounded
+                          : Icons.radio_button_unchecked_rounded,
+                      size: 16,
+                      color: AppColors.overdue,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        t.title,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                          color: AppColors.textDark,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      t.isOverdue ? 'Overdue' : 'Today',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.overdue.withOpacity(0.8),
+                      ),
+                    ),
+                  ],
+                ),
+              )),
+          if (tasks.length > 3)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                '+${tasks.length - 3} more — check Tasks tab',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: AppColors.overdue.withOpacity(0.7),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Mascot greeting loader
 // ---------------------------------------------------------------------------
 
 class _MascotGreetingLoader extends StatelessWidget {
@@ -225,7 +501,6 @@ class _MascotCardState extends State<_MascotCard>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Greeting header
           RichText(
             text: TextSpan(
               style: const TextStyle(
@@ -256,12 +531,9 @@ class _MascotCardState extends State<_MascotCard>
             ),
           ),
           const SizedBox(height: 16),
-
-          // Mascot + speech bubble row
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Bouncing mascot figure
               AnimatedBuilder(
                 animation: _bounceAnim,
                 builder: (context, child) {
@@ -273,7 +545,6 @@ class _MascotCardState extends State<_MascotCard>
                 child: _MascotFigure(),
               ),
               const SizedBox(width: 14),
-              // Speech bubble
               Expanded(
                 child: _SpeechBubble(message: _contextMessage),
               ),
@@ -286,7 +557,7 @@ class _MascotCardState extends State<_MascotCard>
 }
 
 // ---------------------------------------------------------------------------
-// Mascot figure: logo on a lavender rounded background with shadow
+// Mascot figure
 // ---------------------------------------------------------------------------
 
 class _MascotFigure extends StatelessWidget {
@@ -295,7 +566,6 @@ class _MascotFigure extends StatelessWidget {
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        // Soft drop shadow under mascot
         Positioned(
           bottom: -6,
           left: 10,
@@ -314,7 +584,6 @@ class _MascotFigure extends StatelessWidget {
             ),
           ),
         ),
-        // Mascot container
         Container(
           width: 86,
           height: 86,
@@ -322,10 +591,7 @@ class _MascotFigure extends StatelessWidget {
             gradient: const LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [
-                Color(0xFFEEF0FF),
-                AppColors.pillLavender,
-              ],
+              colors: [Color(0xFFEEF0FF), AppColors.pillLavender],
             ),
             borderRadius: BorderRadius.circular(22),
             border: Border.all(
@@ -337,10 +603,7 @@ class _MascotFigure extends StatelessWidget {
             borderRadius: BorderRadius.circular(21),
             child: Padding(
               padding: const EdgeInsets.all(6),
-              child: Image.asset(
-                'lib/images/logo.png',
-                fit: BoxFit.contain,
-              ),
+              child: Image.asset('lib/images/kokoWhite.png', fit: BoxFit.contain),
             ),
           ),
         ),
@@ -350,7 +613,7 @@ class _MascotFigure extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Speech bubble with left-pointing tail
+// Speech bubble
 // ---------------------------------------------------------------------------
 
 class _SpeechBubble extends StatelessWidget {
@@ -372,14 +635,11 @@ class _SpeechBubble extends StatelessWidget {
               bottomLeft: Radius.circular(18),
               bottomRight: Radius.circular(18),
             ),
-            border: Border.all(
-              color: AppColors.navyDark.withOpacity(0.07),
-            ),
+            border: Border.all(color: AppColors.navyDark.withOpacity(0.07)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Mascot name label
               Row(
                 children: [
                   Container(
@@ -392,7 +652,7 @@ class _SpeechBubble extends StatelessWidget {
                   ),
                   const SizedBox(width: 6),
                   const Text(
-                    'Kuromi says',
+                    'Koko says',
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w800,
@@ -415,7 +675,6 @@ class _SpeechBubble extends StatelessWidget {
             ],
           ),
         ),
-        // Triangle tail pointing left toward mascot
         Positioned(
           left: -9,
           top: 18,
@@ -432,25 +691,19 @@ class _SpeechBubble extends StatelessWidget {
 class _BubbleTailPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    // Fill
     final fillPaint = Paint()
       ..color = AppColors.pillLavender
       ..style = PaintingStyle.fill;
-
     final path = Path()
       ..moveTo(size.width, 0)
       ..lineTo(0, size.height / 2)
       ..lineTo(size.width, size.height)
       ..close();
-
     canvas.drawPath(path, fillPaint);
-
-    // Border stroke to match bubble border
     final borderPaint = Paint()
       ..color = AppColors.navyDark.withOpacity(0.07)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1;
-
     canvas.drawPath(path, borderPaint);
   }
 
@@ -459,7 +712,7 @@ class _BubbleTailPainter extends CustomPainter {
 }
 
 // ---------------------------------------------------------------------------
-// All the widgets below are unchanged from your original home_screen.dart
+// Unused but kept to avoid breaking any references
 // ---------------------------------------------------------------------------
 
 class _GreetingRow extends StatelessWidget {
@@ -485,7 +738,6 @@ class _GreetingRow extends StatelessWidget {
                 : (fallbackEmail != null
                     ? fallbackEmail!.split('@').first
                     : 'there');
-
         return Row(
           children: [
             Text(
@@ -497,14 +749,17 @@ class _GreetingRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            const Icon(Icons.verified_rounded,
-                color: AppColors.navyMid, size: 22),
+            const Icon(Icons.verified_rounded, color: AppColors.navyMid, size: 22),
           ],
         );
       },
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Top bar
+// ---------------------------------------------------------------------------
 
 class _TopBar extends StatelessWidget {
   final VoidCallback onLogout;
@@ -529,29 +784,18 @@ class _TopBar extends StatelessWidget {
                   color: AppColors.overdue.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: const Icon(
-                  Icons.logout_rounded,
-                  color: AppColors.overdue,
-                  size: 26,
-                ),
+                child: const Icon(Icons.logout_rounded, color: AppColors.overdue, size: 26),
               ),
               const SizedBox(height: 16),
-              const Text(
-                'Log out?',
-                style: TextStyle(
-                  fontSize: 19,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.textDark,
-                ),
-              ),
+              const Text('Log out?',
+                  style: TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textDark)),
               const SizedBox(height: 8),
               const Text(
                 'You\'ll need to sign in again to access your schedule and QPI records.',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: AppColors.textMuted,
-                  height: 1.4,
-                ),
+                style: TextStyle(fontSize: 14, color: AppColors.textMuted, height: 1.4),
               ),
               const SizedBox(height: 24),
               Row(
@@ -565,9 +809,7 @@ class _TopBar extends StatelessWidget {
                   const SizedBox(width: 12),
                   Expanded(
                     child: FilledButton(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.overdue,
-                      ),
+                      style: FilledButton.styleFrom(backgroundColor: AppColors.overdue),
                       onPressed: () => Navigator.pop(ctx, true),
                       child: const Text('Log out'),
                     ),
@@ -579,9 +821,7 @@ class _TopBar extends StatelessWidget {
         ),
       ),
     );
-    if (confirmed == true) {
-      await auth.logOut();
-    }
+    if (confirmed == true) await auth.logOut();
   }
 
   @override
@@ -599,34 +839,18 @@ class _TopBar extends StatelessWidget {
             builder: (_) => SafeArea(
               child: Wrap(children: [
                 ListTile(
-                  leading: const Icon(Icons.person_outline_rounded,
-                      color: AppColors.navyDark),
-                  title: const Text(
-                    'My Profile',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 15,
-                      color: AppColors.textDark,
-                    ),
-                  ),
+                  leading: const Icon(Icons.person_outline_rounded, color: AppColors.navyDark),
+                  title: const Text('My Profile',
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: AppColors.textDark)),
                   onTap: () {
                     Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const ProfileScreen()),
-                    );
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()));
                   },
                 ),
                 ListTile(
-                  leading: const Icon(Icons.settings_outlined,
-                      color: AppColors.navyDark),
-                  title: const Text(
-                    'Settings',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15,
-                        color: AppColors.textDark),
-                  ),
+                  leading: const Icon(Icons.settings_outlined, color: AppColors.navyDark),
+                  title: const Text('Settings',
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: AppColors.textDark)),
                   onTap: () {
                     Navigator.pop(context);
                     final firestoreService = context.read<FirestoreService>();
@@ -636,10 +860,8 @@ class _TopBar extends StatelessWidget {
                       MaterialPageRoute(
                         builder: (_) => MultiProvider(
                           providers: [
-                            Provider<FirestoreService>.value(
-                                value: firestoreService),
-                            ChangeNotifierProvider<TermController>.value(
-                                value: termController),
+                            Provider<FirestoreService>.value(value: firestoreService),
+                            ChangeNotifierProvider<TermController>.value(value: termController),
                           ],
                           child: const SettingsScreen(),
                         ),
@@ -648,21 +870,12 @@ class _TopBar extends StatelessWidget {
                   },
                 ),
                 ListTile(
-                  leading: SvgPicture.asset(
-                    'lib/images/logout.svg',
-                    width: 22,
-                    height: 22,
-                    colorFilter: const ColorFilter.mode(
-                        AppColors.overdue, BlendMode.srcIn),
-                  ),
-                  title: const Text(
-                    'Log out',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 15,
-                      color: AppColors.overdue,
-                    ),
-                  ),
+                  leading: SvgPicture.asset('lib/images/logout.svg',
+                      width: 22,
+                      height: 22,
+                      colorFilter: const ColorFilter.mode(AppColors.overdue, BlendMode.srcIn)),
+                  title: const Text('Log out',
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: AppColors.overdue)),
                   onTap: () {
                     Navigator.pop(context);
                     _confirmLogout(context, context.read<AuthService>());
@@ -739,6 +952,10 @@ class _DatePill extends StatelessWidget {
   }
 }
 
+// ---------------------------------------------------------------------------
+// School card
+// ---------------------------------------------------------------------------
+
 class _SchoolCard extends StatelessWidget {
   final String uid;
   const _SchoolCard({required this.uid});
@@ -776,8 +993,7 @@ class _SchoolCard extends StatelessWidget {
                         fontSize: 15,
                         color: context.textPrimary)),
               ),
-              const Icon(Icons.verified_rounded,
-                  color: AppColors.navyMid, size: 20),
+              const Icon(Icons.verified_rounded, color: AppColors.navyMid, size: 20),
             ],
           ),
         );
@@ -785,6 +1001,10 @@ class _SchoolCard extends StatelessWidget {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Next class hero
+// ---------------------------------------------------------------------------
 
 class _NextClassHero extends StatelessWidget {
   final List<ClassSession> classes;
@@ -829,8 +1049,7 @@ class _NextClassHero extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.14),
                       borderRadius: BorderRadius.circular(20),
@@ -849,8 +1068,7 @@ class _NextClassHero extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const Icon(Icons.arrow_forward_rounded,
-                      color: Colors.white70),
+                  const Icon(Icons.arrow_forward_rounded, color: Colors.white70),
                 ],
               ),
               const SizedBox(height: 28),
@@ -858,18 +1076,15 @@ class _NextClassHero extends StatelessWidget {
                 next == null
                     ? 'No more classes today'
                     : current != null
-                        ? 'Ends at ${next.endTime}'
-                        : 'Next class ${next.startTime}',
+                        ? 'Ends at ${formatTimeOfDay(next.endTime, is24Hour: is24Hour)}'
+                        : 'Next class ${formatTimeOfDay(next.startTime, is24Hour: is24Hour)}',
                 style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 26,
-                    fontWeight: FontWeight.w800),
+                    color: Colors.white, fontSize: 26, fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 6),
               Text(
                 next == null ? 'Enjoy your day!' : 'Next: ${next.subjectCode}',
-                style: TextStyle(
-                    color: Colors.white.withOpacity(0.85), fontSize: 15),
+                style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 15),
               ),
               if (next != null) ...[
                 const SizedBox(height: 20),
@@ -879,8 +1094,7 @@ class _NextClassHero extends StatelessWidget {
                         is24Hour: is24Hour)),
                 if (next.room.isNotEmpty) ...[
                   const SizedBox(height: 10),
-                  _HeroChip(
-                      icon: Icons.door_front_door_outlined, label: next.room),
+                  _HeroChip(icon: Icons.door_front_door_outlined, label: next.room),
                 ],
               ],
             ],
@@ -909,8 +1123,7 @@ class _HeroChip extends StatelessWidget {
           Icon(icon, color: Colors.white, size: 18),
           const SizedBox(width: 10),
           Text(label,
-              style: const TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.w700)),
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
         ],
       ),
     );
@@ -930,12 +1143,15 @@ class _NoTermHero extends StatelessWidget {
           borderRadius: BorderRadius.circular(28)),
       child: const Text(
         'Create a term to see your schedule here.',
-        style: TextStyle(
-            color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+        style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
       ),
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Today's Classes — all classes, past ones dimmed with strikethrough
+// ---------------------------------------------------------------------------
 
 class _UpcomingCard extends StatelessWidget {
   final List<ClassSession> classes;
@@ -949,19 +1165,18 @@ class _UpcomingCard extends StatelessWidget {
     final todayCode = dayCodes[now.weekday - 1];
     final nowMinutes = now.hour * 60 + now.minute;
 
-    final items = (classes
-            .where((c) => c.day == todayCode && c.startMinutes > nowMinutes)
-            .toList()
-          ..sort((a, b) => a.startMinutes.compareTo(b.startMinutes)))
-        .take(3)
-        .toList();
+    // All of today's classes, sorted by start time — no take(3) limit
+    final items = classes
+        .where((c) => c.day == todayCode)
+        .toList()
+      ..sort((a, b) => a.startMinutes.compareTo(b.startMinutes));
 
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.cardBg,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: AppColors.cardBorder),
+        border: Border.all(color: context.cardBorderColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -972,61 +1187,133 @@ class _UpcomingCard extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                    color: AppColors.pillLavender,
+                    color: context.pillBg,
                     borderRadius: BorderRadius.circular(12)),
-                child: const Icon(Icons.calendar_month_rounded,
-                    color: AppColors.navyDark, size: 20),
+                child: Icon(Icons.calendar_month_rounded,
+                    color: context.accent, size: 20),
               ),
               const SizedBox(width: 12),
-              const Column(
+              Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text("Today's Classes",
-                      style:
-                          TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-                  Text('Rest of the day',
-                      style:
-                          TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                      style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                          color: context.textPrimary)),
+                  Text('Full day overview',
+                      style: TextStyle(color: context.textSecondary, fontSize: 12)),
                 ],
               ),
+              const Spacer(),
+              // Badge: count of remaining classes
+              if (items.where((c) => c.endMinutes > nowMinutes).isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppColors.navyDark,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '${items.where((c) => c.endMinutes > nowMinutes).length} left',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700),
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 16),
           if (items.isEmpty)
-            const Text('Nothing else scheduled today.',
-                style: TextStyle(color: AppColors.textMuted))
+            Text('Nothing scheduled today.',
+                style: TextStyle(color: context.textSecondary))
           else
-            ...items.map((c) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
+            ...items.map((c) {
+              final isPast = c.endMinutes <= nowMinutes;
+              final isOngoing = c.startMinutes <= nowMinutes && nowMinutes < c.endMinutes;
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Opacity(
+                  opacity: isPast ? 0.45 : 1.0,
                   child: Row(
                     children: [
                       Container(
                         width: 36,
                         height: 36,
                         decoration: BoxDecoration(
-                            color: c.colorValue,
-                            borderRadius: BorderRadius.circular(10)),
-                        child: const Icon(Icons.schedule_rounded, size: 18),
+                          color: isPast
+                              ? Colors.grey.shade300
+                              : isOngoing
+                                  ? AppColors.excellent
+                                  : c.colorValue,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          isPast
+                              ? Icons.check_rounded
+                              : isOngoing
+                                  ? Icons.play_arrow_rounded
+                                  : Icons.schedule_rounded,
+                          size: 18,
+                          color: isPast
+                              ? Colors.grey.shade600
+                              : isOngoing
+                                  ? Colors.white
+                                  : AppColors.textDark,
+                        ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(c.subjectCode,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w700)),
+                            Text(
+                              c.subjectCode,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: isPast
+                                    ? context.textSecondary
+                                    : context.textPrimary,
+                                decoration: isPast
+                                    ? TextDecoration.lineThrough
+                                    : null,
+                              ),
+                            ),
                             Text(
                               '${formatTimeRange(c.startTime, c.endTime, is24Hour: is24Hour)}${c.room.isNotEmpty ? ' · ${c.room}' : ''}',
-                              style: const TextStyle(
-                                  color: AppColors.textMuted, fontSize: 12),
+                              style: TextStyle(
+                                  color: context.textSecondary, fontSize: 12),
                             ),
                           ],
                         ),
                       ),
+                      if (isOngoing)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: AppColors.excellent.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text(
+                            'Now',
+                            style: TextStyle(
+                              color: AppColors.excellent,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        )
+                      else if (isPast)
+                        Icon(Icons.check_circle_rounded,
+                            color: AppColors.excellent.withOpacity(0.6), size: 16),
                     ],
                   ),
-                )),
+                ),
+              );
+            }),
         ],
       ),
     );
