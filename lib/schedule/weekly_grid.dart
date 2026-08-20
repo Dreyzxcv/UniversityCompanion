@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../shared/services/time_format_controller.dart';
 import '../shared/utils/time_format.dart';
 import '../shared/theme/app_theme.dart';
+import '../shared/services/schedule_display_controller.dart';
 
 const double _hourHeight = 68.0;
 const double _dayColumnWidth = 118.0;
@@ -104,6 +105,7 @@ class _WeeklyGridState extends State<WeeklyGrid> {
   @override
   Widget build(BuildContext context) {
     final is24Hour = context.watch<TimeFormatController>().is24Hour;
+    final showTimeIndicatorPref = context.watch<ScheduleDisplayController>().showTimeIndicator; 
     final (startHour, endHour) = _hourRange;
     final totalHeight = (endHour - startHour) * _hourHeight;
     final totalWidth = _dayColumnWidth * kWeekDays.length;
@@ -115,7 +117,7 @@ class _WeeklyGridState extends State<WeeklyGrid> {
       builder: (context, _) {
         final nowTop = _nowTopOffset(startHour);
         final showTimeLine =
-            nowTop >= 0 && nowTop <= totalHeight;
+            showTimeIndicatorPref && nowTop >= 0 && nowTop <= totalHeight;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
