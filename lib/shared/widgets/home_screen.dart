@@ -30,14 +30,36 @@ class HomeScreen extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
           children: [
             _TopBar(onLogout: auth.logOut),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             const _DatePill(),
             const SizedBox(height: 16),
-            if (user != null) _SchoolCard(uid: user.uid),
-            const SizedBox(height: 20),
+
+            // Mascot greeting card
             if (user != null)
-              _GreetingRow(uid: user.uid, fallbackEmail: user.email),
-            const SizedBox(height: 20),
+              termId == null
+                  ? _MascotGreetingLoader(
+                      uid: user.uid,
+                      fallbackEmail: user.email,
+                      classes: const [],
+                    )
+                  : StreamBuilder<List<ClassSession>>(
+                      stream: firestoreService.watchClasses(termId),
+                      builder: (context, snapshot) {
+                        return _MascotGreetingLoader(
+                          uid: user.uid,
+                          fallbackEmail: user.email,
+                          classes: snapshot.data ?? [],
+                        );
+                      },
+                    ),
+
+            const SizedBox(height: 16),
+
+            // School card
+            if (user != null) _SchoolCard(uid: user.uid),
+            const SizedBox(height: 16),
+
+            // Next class hero
             termId == null
                 ? const _NoTermHero()
                 : StreamBuilder<List<ClassSession>>(
@@ -46,7 +68,8 @@ class HomeScreen extends StatelessWidget {
                       return _NextClassHero(classes: snapshot.data ?? []);
                     },
                   ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
+
             if (termId != null)
               StreamBuilder<List<ClassSession>>(
                 stream: firestoreService.watchClasses(termId),
@@ -60,6 +83,384 @@ class HomeScreen extends StatelessWidget {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Loads the user's first name then hands off to the mascot card
+// ---------------------------------------------------------------------------
+
+class _MascotGreetingLoader extends StatelessWidget {
+  final String uid;
+  final String? fallbackEmail;
+  final List<ClassSession> classes;
+
+  const _MascotGreetingLoader({
+    required this.uid,
+    required this.fallbackEmail,
+    required this.classes,
+  });
+
+  String _firstNameFrom(String fullName) {
+    final trimmed = fullName.trim();
+    if (trimmed.isEmpty) return '';
+    return trimmed.split(RegExp(r'\s+')).first;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      future: FirebaseFirestore.instance.collection('users').doc(uid).get(),
+      builder: (context, snapshot) {
+        final fullName = snapshot.data?.data()?['name'] as String?;
+        final firstName = (fullName != null && fullName.trim().isNotEmpty)
+            ? _firstNameFrom(fullName)
+            : (fallbackEmail?.split('@').first ?? 'there');
+        return _MascotCard(firstName: firstName, classes: classes);
+      },
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Mascot card with idle bounce + contextual speech bubble
+// ---------------------------------------------------------------------------
+
+class _MascotCard extends StatefulWidget {
+  final String firstName;
+  final List<ClassSession> classes;
+
+  const _MascotCard({required this.firstName, required this.classes});
+
+  @override
+  State<_MascotCard> createState() => _MascotCardState();
+}
+
+class _MascotCardState extends State<_MascotCard>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _bounceCtrl;
+  late final Animation<double> _bounceAnim;
+
+  String get _greeting {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  }
+
+  String get _contextMessage {
+    final now = DateTime.now();
+    const dayCodes = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+    final todayCode = dayCodes[now.weekday - 1];
+    final nowMinutes = now.hour * 60 + now.minute;
+
+    final todays = widget.classes
+        .where((c) => c.day == todayCode)
+        .toList()
+      ..sort((a, b) => a.startMinutes.compareTo(b.startMinutes));
+
+    final ongoing = todays.where(
+      (c) => c.startMinutes <= nowMinutes && nowMinutes < c.endMinutes,
+    );
+    final upcoming = todays.where((c) => c.startMinutes > nowMinutes);
+
+    if (ongoing.isNotEmpty) {
+      final c = ongoing.first;
+      return "You're in ${c.subjectCode} right now.\nStay focused! 📚";
+    }
+    if (upcoming.isNotEmpty) {
+      final c = upcoming.first;
+      final mins = c.startMinutes - nowMinutes;
+      if (mins <= 15) {
+        return "${c.subjectCode} starts in $mins min!\nTime to head out! 🏃";
+      }
+      if (mins <= 60) {
+        return "Next: ${c.subjectCode} at ${c.startTime}.\nYou've got time! ✨";
+      }
+      return "Next class is ${c.subjectCode}.\nRelax a bit first~ 😌";
+    }
+    if (todays.isNotEmpty) {
+      return "All done for today!\nRest up and recharge. 🌙";
+    }
+
+    final hour = now.hour;
+    if (hour < 12) return "No classes today!\nA great day to review. 📖";
+    if (hour < 17) return "Free afternoon!\nPerfect study time. ☕";
+    return "No classes today!\nEnjoy your evening~ 🌟";
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _bounceCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat(reverse: true);
+
+    _bounceAnim = Tween<double>(begin: 0, end: -8).animate(
+      CurvedAnimation(parent: _bounceCtrl, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _bounceCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.cardBorder),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.navyDark.withOpacity(0.07),
+            blurRadius: 20,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Greeting header
+          RichText(
+            text: TextSpan(
+              style: const TextStyle(
+                fontSize: 20,
+                color: AppColors.textDark,
+                fontWeight: FontWeight.w400,
+                fontFamily: 'Roboto',
+              ),
+              children: [
+                TextSpan(text: '$_greeting, '),
+                TextSpan(
+                  text: '${widget.firstName}!',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.navyDark,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            DateFormat('EEEE, MMMM d').format(DateTime.now()),
+            style: const TextStyle(
+              fontSize: 12,
+              color: AppColors.textMuted,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Mascot + speech bubble row
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Bouncing mascot figure
+              AnimatedBuilder(
+                animation: _bounceAnim,
+                builder: (context, child) {
+                  return Transform.translate(
+                    offset: Offset(0, _bounceAnim.value),
+                    child: child,
+                  );
+                },
+                child: _MascotFigure(),
+              ),
+              const SizedBox(width: 14),
+              // Speech bubble
+              Expanded(
+                child: _SpeechBubble(message: _contextMessage),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Mascot figure: logo on a lavender rounded background with shadow
+// ---------------------------------------------------------------------------
+
+class _MascotFigure extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        // Soft drop shadow under mascot
+        Positioned(
+          bottom: -6,
+          left: 10,
+          right: 10,
+          child: Container(
+            height: 8,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(50),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.navyDark.withOpacity(0.18),
+                  blurRadius: 10,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+          ),
+        ),
+        // Mascot container
+        Container(
+          width: 86,
+          height: 86,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFFEEF0FF),
+                AppColors.pillLavender,
+              ],
+            ),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: AppColors.navyDark.withOpacity(0.08),
+              width: 1.5,
+            ),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(21),
+            child: Padding(
+              padding: const EdgeInsets.all(6),
+              child: Image.asset(
+                'lib/images/logo.png',
+                fit: BoxFit.contain,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Speech bubble with left-pointing tail
+// ---------------------------------------------------------------------------
+
+class _SpeechBubble extends StatelessWidget {
+  final String message;
+  const _SpeechBubble({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: AppColors.pillLavender,
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(4),
+              topRight: Radius.circular(18),
+              bottomLeft: Radius.circular(18),
+              bottomRight: Radius.circular(18),
+            ),
+            border: Border.all(
+              color: AppColors.navyDark.withOpacity(0.07),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Mascot name label
+              Row(
+                children: [
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: const BoxDecoration(
+                      color: AppColors.navyDark,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  const Text(
+                    'Kuromi says',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.navyDark,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                message,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: AppColors.textDark,
+                  height: 1.45,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Triangle tail pointing left toward mascot
+        Positioned(
+          left: -9,
+          top: 18,
+          child: CustomPaint(
+            size: const Size(10, 14),
+            painter: _BubbleTailPainter(),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _BubbleTailPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Fill
+    final fillPaint = Paint()
+      ..color = AppColors.pillLavender
+      ..style = PaintingStyle.fill;
+
+    final path = Path()
+      ..moveTo(size.width, 0)
+      ..lineTo(0, size.height / 2)
+      ..lineTo(size.width, size.height)
+      ..close();
+
+    canvas.drawPath(path, fillPaint);
+
+    // Border stroke to match bubble border
+    final borderPaint = Paint()
+      ..color = AppColors.navyDark.withOpacity(0.07)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+
+    canvas.drawPath(path, borderPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter old) => false;
+}
+
+// ---------------------------------------------------------------------------
+// All the widgets below are unchanged from your original home_screen.dart
+// ---------------------------------------------------------------------------
 
 class _GreetingRow extends StatelessWidget {
   final String uid;
@@ -217,10 +618,14 @@ class _TopBar extends StatelessWidget {
                   },
                 ),
                 ListTile(
-                  leading: const Icon(Icons.settings_outlined, color: AppColors.navyDark),
+                  leading: const Icon(Icons.settings_outlined,
+                      color: AppColors.navyDark),
                   title: const Text(
                     'Settings',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: AppColors.textDark),
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                        color: AppColors.textDark),
                   ),
                   onTap: () {
                     Navigator.pop(context);
@@ -231,8 +636,10 @@ class _TopBar extends StatelessWidget {
                       MaterialPageRoute(
                         builder: (_) => MultiProvider(
                           providers: [
-                            Provider<FirestoreService>.value(value: firestoreService),
-                            ChangeNotifierProvider<TermController>.value(value: termController),
+                            Provider<FirestoreService>.value(
+                                value: firestoreService),
+                            ChangeNotifierProvider<TermController>.value(
+                                value: termController),
                           ],
                           child: const SettingsScreen(),
                         ),
@@ -332,8 +739,6 @@ class _DatePill extends StatelessWidget {
   }
 }
 
-/// Reads `users/{uid}.school` directly (rather than adding a new service
-/// method) since it's a single one-off read used only for this card.
 class _SchoolCard extends StatelessWidget {
   final String uid;
   const _SchoolCard({required this.uid});
@@ -367,7 +772,9 @@ class _SchoolCard extends StatelessWidget {
               Expanded(
                 child: Text(school,
                     style: TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 15, color: context.textPrimary)),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                        color: context.textPrimary)),
               ),
               const Icon(Icons.verified_rounded,
                   color: AppColors.navyMid, size: 20),
@@ -379,8 +786,6 @@ class _SchoolCard extends StatelessWidget {
   }
 }
 
-/// Mirrors the "FREE TIME / Next class" hero: finds today's current or
-/// next class from the already-streamed [classes] list.
 class _NextClassHero extends StatelessWidget {
   final List<ClassSession> classes;
   const _NextClassHero({required this.classes});
