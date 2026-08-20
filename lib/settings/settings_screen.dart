@@ -9,6 +9,7 @@ import '../shared/theme/app_theme.dart';
 import 'term_management_screen.dart';
 import '../shared/services/firestore_service.dart';
 import '../shared/services/term_controller.dart';
+import '../shared/services/schedule_display_controller.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -25,6 +26,8 @@ class SettingsScreen extends StatelessWidget {
           _TimeFormatCard(),
           SizedBox(height: 12),
           _DarkModeCard(),
+          SizedBox(height: 12),
+          _ScheduleDisplayCard(),
           SizedBox(height: 24),
           _SectionLabel('Notifications'),
           SizedBox(height: 10),
@@ -120,6 +123,26 @@ class _DarkModeCard extends StatelessWidget {
         ],
         selected: {controller.mode},
         onSelectionChanged: (s) => controller.setMode(s.first),
+      ),
+    ]);
+  }
+}
+
+class _ScheduleDisplayCard extends StatelessWidget {
+  const _ScheduleDisplayCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = context.watch<ScheduleDisplayController>();
+    return _SettingsCard(children: [
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text('Current Time Line', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+        subtitle: const Text('Show the red line marking the current time on your schedule.',
+            style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+        value: controller.showTimeIndicator,
+        activeThumbColor: AppColors.navyDark,
+        onChanged: controller.setShowTimeIndicator,
       ),
     ]);
   }
