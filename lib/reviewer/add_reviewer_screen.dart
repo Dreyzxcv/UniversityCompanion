@@ -3,21 +3,42 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
+import '../shared/models/quiz_question.dart';
 import '../shared/services/reviewer_service.dart';
 import '../shared/theme/app_theme.dart';
 import 'quiz_screen.dart';
 
 enum _NotesSource { pasteText, uploadPdf }
 
-/// One successfully-extracted PDF: its display name plus the text pulled
-/// from it. Kept separate (rather than immediately mashed into one big
-/// string) so individual chapters can be removed later without having to
-/// re-parse the whole combined blob.
 class _PickedPdf {
   final String name;
   final String text;
   const _PickedPdf({required this.name, required this.text});
 }
+
+// ---------------------------------------------------------------------------
+// Defaults and constraints
+// ---------------------------------------------------------------------------
+
+const int _kDefaultQuestions = 15;
+const int _kMinQuestions = 5;
+const int _kMaxQuestions = 50;
+
+/// All types available for the user to toggle on/off.
+const List<QuestionType> _kAllTypes = [
+  QuestionType.multipleChoice,
+  QuestionType.trueOrFalse,
+  QuestionType.identification,
+  QuestionType.fillInTheBlanks,
+  QuestionType.enumeration,
+];
+
+/// Types enabled by default.
+const Set<QuestionType> _kDefaultTypes = {
+  QuestionType.multipleChoice,
+  QuestionType.identification,
+  QuestionType.enumeration,
+};
 
 class AddReviewerScreen extends StatefulWidget {
   const AddReviewerScreen({super.key});
@@ -29,17 +50,14 @@ class AddReviewerScreen extends StatefulWidget {
 class _AddReviewerScreenState extends State<AddReviewerScreen> {
   final _titleCtrl = TextEditingController();
   final _textCtrl = TextEditingController();
-  int _numQuestions = 10;
+
+  int _numQuestions = _kDefaultQuestions;
+  Set<QuestionType> _enabledTypes = Set.from(_kDefaultTypes);
+
   bool _generating = false;
   String? _error;
 
   _NotesSource _source = _NotesSource.pasteText;
-
-  // PDF-specific state, kept separate from the generic _error above so
-  // switching tabs doesn't leave a stale error from the other mode showing.
-  // Multiple chapter PDFs are supported — one subject often has one file
-  // per chapter (Chapter 1, Chapter 2, ...), so this is a list rather
-  // than a single file.
   bool _extractingPdf = false;
   final List<_PickedPdf> _pdfFiles = [];
   String? _pdfError;
@@ -56,16 +74,20 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
     setState(() {
       _source = source;
       _error = null;
-      // Deliberately NOT clearing _textCtrl here: if someone uploads PDFs,
-      // taps back to "Paste Text" to tweak a line, then switches back, the
-      // extracted text should still be there rather than forcing a re-upload.
     });
   }
 
-  /// Recombines every extracted chapter into one source-text blob, each
-  /// clearly labeled by its filename so the quiz generator can tell
-  /// chapters apart (and so a student who peeks at the raw text isn't
-  /// looking at an undifferentiated wall of concatenated PDFs).
+  void _toggleType(QuestionType type) {
+    setState(() {
+      if (_enabledTypes.contains(type)) {
+        // Keep at least one type enabled.
+        if (_enabledTypes.length > 1) _enabledTypes.remove(type);
+      } else {
+        _enabledTypes.add(type);
+      }
+    });
+  }
+
   void _recomputeCombinedText() {
     _textCtrl.text = _pdfFiles
         .map((f) => '=== ${f.name} ===\n${f.text}')
@@ -87,7 +109,6 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
       );
 
       if (result == null || result.files.isEmpty) {
-        // User cancelled the picker.
         setState(() => _extractingPdf = false);
         return;
       }
@@ -113,8 +134,6 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
 
           final cleaned = extracted.trim();
           if (cleaned.length < 50) {
-            // Most likely a scanned PDF with no embedded text layer, or an
-            // otherwise near-empty document — nothing worth quizzing on.
             skipped.add(picked.name);
             continue;
           }
@@ -131,7 +150,8 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
         _recomputeCombinedText();
         _extractingPdf = false;
         if (skipped.isNotEmpty && newlyAdded.isEmpty) {
-          _pdfError = "Couldn't find enough readable text in "
+          _pdfError =
+              "Couldn't find enough readable text in "
               "${skipped.length == 1 ? 'that file' : 'those files'}. "
               "They may be scanned documents without selectable text — "
               "try PDFs exported from Word/Google Docs instead.";
@@ -168,13 +188,35 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
     });
   }
 
+  /// Distributes [_numQuestions] across the enabled types as evenly as
+  /// possible, giving any remainder to the first type in the list.
+  Map<QuestionType, int> _computeCounts() {
+    final types = _kAllTypes.where(_enabledTypes.contains).toList();
+    if (types.isEmpty) return {};
+
+    final base = _numQuestions ~/ types.length;
+    final remainder = _numQuestions % types.length;
+
+    final counts = <QuestionType, int>{};
+    for (int i = 0; i < types.length; i++) {
+      counts[types[i]] = base + (i < remainder ? 1 : 0);
+    }
+    return counts;
+  }
+
   Future<void> _generate() async {
-    if (_titleCtrl.text.trim().isEmpty || _textCtrl.text.trim().length < 50) {
+    if (_titleCtrl.text.trim().isEmpty ||
+        _textCtrl.text.trim().length < 50) {
       setState(() => _error = _source == _NotesSource.uploadPdf
           ? 'Add a title and upload at least one PDF with enough readable text.'
           : 'Add a title and at least a few sentences of notes.');
       return;
     }
+    if (_enabledTypes.isEmpty) {
+      setState(() => _error = 'Select at least one question type.');
+      return;
+    }
+
     setState(() {
       _generating = true;
       _error = null;
@@ -182,23 +224,16 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
 
     try {
       final service = context.read<ReviewerService>();
-      final mcq = (_numQuestions * 0.5).round();
-      final ident = (_numQuestions * 0.3).round();
-      final enumr = _numQuestions - mcq - ident;
+      final counts = _computeCounts();
 
       final reviewerId = await service.generateQuizFromText(
         title: _titleCtrl.text.trim(),
         sourceText: _textCtrl.text.trim(),
         numQuestions: _numQuestions,
-        numMcq: mcq,
-        numIdentification: ident,
-        numEnumeration: enumr,
+        typeCounts: counts,
       );
 
       if (mounted) {
-        // Same rule as ReviewerListScreen: re-supply the provider to the
-        // new route since Navigator.push/pushReplacement lands outside
-        // this screen's provider scope.
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -210,10 +245,6 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
         );
       }
     } catch (e, stack) {
-      // TEMPORARY: print the full error to the debug console so we can
-      // see exactly what's failing (Gemini call, parsing, or Firestore
-      // write). Remove the debugPrint once the real cause is fixed and
-      // replace _error with a clean user-facing message.
       debugPrint('generateQuizFromText failed: $e');
       debugPrint('$stack');
       if (mounted) {
@@ -226,6 +257,8 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final counts = _computeCounts();
+
     return Scaffold(
       appBar: AppBar(title: const Text('New Reviewer')),
       body: SingleChildScrollView(
@@ -233,15 +266,22 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // ── Title ─────────────────────────────────────────────────────
             TextField(
               controller: _titleCtrl,
               enabled: !_generating,
-              decoration: const InputDecoration(labelText: 'Title (e.g. "Computer Programming")'),
+              decoration: const InputDecoration(
+                  labelText: 'Title (e.g. "Computer Programming")'),
             ),
             const SizedBox(height: 18),
+
+            // ── Source toggle ──────────────────────────────────────────────
             const Text(
               'Source material',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textMuted),
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textMuted),
             ),
             const SizedBox(height: 8),
             Row(
@@ -251,7 +291,9 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
                     icon: Icons.notes_rounded,
                     label: 'Paste Text',
                     selected: _source == _NotesSource.pasteText,
-                    onTap: _generating ? null : () => _switchSource(_NotesSource.pasteText),
+                    onTap: _generating
+                        ? null
+                        : () => _switchSource(_NotesSource.pasteText),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -260,12 +302,15 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
                     icon: Icons.picture_as_pdf_rounded,
                     label: 'Upload PDFs',
                     selected: _source == _NotesSource.uploadPdf,
-                    onTap: _generating ? null : () => _switchSource(_NotesSource.uploadPdf),
+                    onTap: _generating
+                        ? null
+                        : () => _switchSource(_NotesSource.uploadPdf),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 14),
+
             if (_source == _NotesSource.pasteText)
               TextField(
                 controller: _textCtrl,
@@ -285,21 +330,112 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
                 onRemove: _generating ? null : _removePdf,
                 onClearAll: _generating ? null : _clearAllPdfs,
               ),
-            const SizedBox(height: 18),
-            Text('Number of questions: $_numQuestions',
-                style: const TextStyle(fontWeight: FontWeight.w700)),
+
+            const SizedBox(height: 22),
+
+            // ── Question types ─────────────────────────────────────────────
+            Row(
+              children: [
+                const Text(
+                  'Question types',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textMuted),
+                ),
+                const SizedBox(width: 6),
+                Tooltip(
+                  message:
+                      'Select which kinds of questions to include. '
+                      'Questions are distributed evenly across selected types.',
+                  child: Icon(Icons.info_outline_rounded,
+                      size: 14, color: AppColors.textMuted),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _kAllTypes.map((type) {
+                final enabled = _enabledTypes.contains(type);
+                final count = counts[type] ?? 0;
+                return _TypeChip(
+                  type: type,
+                  enabled: enabled,
+                  count: count,
+                  onTap: _generating ? null : () => _toggleType(type),
+                );
+              }).toList(),
+            ),
+
+            const SizedBox(height: 22),
+
+            // ── Question count slider ──────────────────────────────────────
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Number of questions',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700, fontSize: 14),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.navyDark,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '$_numQuestions',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14),
+                  ),
+                ),
+              ],
+            ),
             Slider(
               value: _numQuestions.toDouble(),
-              min: 5,
-              max: 20,
-              divisions: 15,
+              min: _kMinQuestions.toDouble(),
+              max: _kMaxQuestions.toDouble(),
+              divisions: _kMaxQuestions - _kMinQuestions,
               label: '$_numQuestions',
               onChanged: _generating
                   ? null
                   : (v) => setState(() => _numQuestions = v.round()),
             ),
+            // Subtle warning for very long quizzes.
+            if (_numQuestions >= 40)
+              Padding(
+                padding: const EdgeInsets.only(top: 2, bottom: 4),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline_rounded,
+                        size: 13, color: AppColors.passingWarn),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Longer quizzes may take a bit more time to generate.',
+                        style: TextStyle(
+                            fontSize: 11, color: AppColors.passingWarn),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+            // ── Distribution preview ───────────────────────────────────────
+            if (_enabledTypes.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _DistributionPreview(counts: counts),
+            ],
+
+            // ── Error ──────────────────────────────────────────────────────
             if (_error != null) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -308,21 +444,27 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
                 ),
                 child: Text(
                   _error!,
-                  style: const TextStyle(color: AppColors.overdue, fontSize: 12),
+                  style: const TextStyle(
+                      color: AppColors.overdue, fontSize: 12),
                 ),
               ),
             ],
+
             const SizedBox(height: 20),
+
+            // ── Generate button ────────────────────────────────────────────
             FilledButton.icon(
               onPressed: _generating ? null : _generate,
               icon: _generating
                   ? const SizedBox(
                       height: 18,
                       width: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
                     )
                   : const Icon(Icons.auto_awesome_rounded),
-              label: Text(_generating ? 'Generating…' : 'Generate Quiz'),
+              label:
+                  Text(_generating ? 'Generating…' : 'Generate Quiz'),
             ),
           ],
         ),
@@ -331,9 +473,171 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
   }
 }
 
-/// Small pill-style toggle button used to switch between "Paste Text" and
-/// "Upload PDFs" — matches the ChoiceChip visual language used elsewhere
-/// in the app (day pickers, grade pickers) rather than a plain TabBar.
+// ---------------------------------------------------------------------------
+// Type chip — shows type label + count badge when enabled
+// ---------------------------------------------------------------------------
+
+class _TypeChip extends StatelessWidget {
+  final QuestionType type;
+  final bool enabled;
+  final int count;
+  final VoidCallback? onTap;
+
+  const _TypeChip({
+    required this.type,
+    required this.enabled,
+    required this.count,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: type.description,
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: enabled
+                ? AppColors.navyDark
+                : AppColors.pillLavender.withOpacity(0.6),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                type.label,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  color: enabled ? Colors.white : AppColors.textDark,
+                ),
+              ),
+              if (enabled && count > 0) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '$count',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Distribution preview bar
+// ---------------------------------------------------------------------------
+
+class _DistributionPreview extends StatelessWidget {
+  final Map<QuestionType, int> counts;
+
+  const _DistributionPreview({required this.counts});
+
+  static const _typeColors = {
+    QuestionType.multipleChoice: Color(0xFF4A6FA5),
+    QuestionType.trueOrFalse: Color(0xFF16A672),
+    QuestionType.identification: Color(0xFF8B5CF6),
+    QuestionType.fillInTheBlanks: Color(0xFFDB9A15),
+    QuestionType.enumeration: Color(0xFFE0483E),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final total = counts.values.fold(0, (a, b) => a + b);
+    if (total == 0) return const SizedBox.shrink();
+
+    final entries =
+        counts.entries.where((e) => e.value > 0).toList();
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.pillLavender.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.cardBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Distribution',
+            style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 10),
+          // Segmented bar
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: Row(
+              children: entries.map((e) {
+                final flex = e.value;
+                final color = _typeColors[e.key] ?? AppColors.navyDark;
+                return Expanded(
+                  flex: flex,
+                  child: Container(height: 8, color: color),
+                );
+              }).toList(),
+            ),
+          ),
+          const SizedBox(height: 10),
+          // Legend
+          Wrap(
+            spacing: 12,
+            runSpacing: 6,
+            children: entries.map((e) {
+              final color = _typeColors[e.key] ?? AppColors.navyDark;
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                        color: color, shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    '${e.key.shortLabel} × ${e.value}',
+                    style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textDark),
+                  ),
+                ],
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Source toggle chip (unchanged from original)
+// ---------------------------------------------------------------------------
+
 class _SourceToggleChip extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -350,7 +654,9 @@ class _SourceToggleChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected ? AppColors.navyDark : AppColors.pillLavender.withOpacity(0.6),
+      color: selected
+          ? AppColors.navyDark
+          : AppColors.pillLavender.withOpacity(0.6),
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
@@ -360,14 +666,19 @@ class _SourceToggleChip extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 16, color: selected ? Colors.white : AppColors.navyDark),
+              Icon(icon,
+                  size: 16,
+                  color:
+                      selected ? Colors.white : AppColors.navyDark),
               const SizedBox(width: 8),
               Text(
                 label,
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
                   fontSize: 13,
-                  color: selected ? Colors.white : AppColors.textDark,
+                  color: selected
+                      ? Colors.white
+                      : AppColors.textDark,
                 ),
               ),
             ],
@@ -378,13 +689,10 @@ class _SourceToggleChip extends StatelessWidget {
   }
 }
 
-/// PDF upload state panel: pick button when empty, extracting spinner
-/// mid-pick, and a list of extracted chapter files once at least one has
-/// been picked — each with its own char count and remove button, plus an
-/// "Add more PDFs" action so chapters can be added one batch at a time.
-/// Text is extracted entirely on-device before anything is sent to
-/// Gemini — the PDFs themselves never leave the phone, only the
-/// extracted text does (same as pasted notes).
+// ---------------------------------------------------------------------------
+// PDF upload panel (unchanged from original)
+// ---------------------------------------------------------------------------
+
 class _PdfUploadPanel extends StatelessWidget {
   final bool extracting;
   final List<_PickedPdf> files;
@@ -405,7 +713,8 @@ class _PdfUploadPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasFiles = files.isNotEmpty;
-    final totalChars = files.fold<int>(0, (sum, f) => sum + f.text.length);
+    final totalChars =
+        files.fold<int>(0, (sum, f) => sum + f.text.length);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -416,7 +725,9 @@ class _PdfUploadPanel extends StatelessWidget {
             color: AppColors.pillLavender.withOpacity(0.6),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: hasFiles ? AppColors.excellent.withOpacity(0.4) : AppColors.cardBorder,
+              color: hasFiles
+                  ? AppColors.excellent.withOpacity(0.4)
+                  : AppColors.cardBorder,
             ),
           ),
           child: extracting
@@ -426,10 +737,13 @@ class _PdfUploadPanel extends StatelessWidget {
                     SizedBox(
                       height: 18,
                       width: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child:
+                          CircularProgressIndicator(strokeWidth: 2),
                     ),
                     SizedBox(width: 12),
-                    Text('Reading PDFs…', style: TextStyle(fontWeight: FontWeight.w600)),
+                    Text('Reading PDFs…',
+                        style:
+                            TextStyle(fontWeight: FontWeight.w600)),
                   ],
                 )
               : hasFiles
@@ -440,37 +754,49 @@ class _PdfUploadPanel extends StatelessWidget {
                           if (i > 0) const SizedBox(height: 10),
                           _PdfFileRow(
                             file: files[i],
-                            onRemove: onRemove == null ? null : () => onRemove!(i),
+                            onRemove: onRemove == null
+                                ? null
+                                : () => onRemove!(i),
                           ),
                         ],
                         const SizedBox(height: 10),
-                        Container(height: 1, color: AppColors.cardBorder),
+                        Container(
+                            height: 1, color: AppColors.cardBorder),
                         const SizedBox(height: 10),
                         Text(
                           '${files.length} chapter${files.length == 1 ? '' : 's'} · $totalChars characters total',
-                          style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                          style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.textMuted),
                         ),
                       ],
                     )
                   : Column(
                       children: [
-                        const Icon(Icons.upload_file_rounded, color: AppColors.navyDark, size: 28),
+                        const Icon(Icons.upload_file_rounded,
+                            color: AppColors.navyDark, size: 28),
                         const SizedBox(height: 10),
                         const Text(
                           'Upload one or more PDFs',
-                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14),
                         ),
                         const SizedBox(height: 4),
                         const Text(
                           'Add a PDF per chapter (Ch. 1, Ch. 2, ...) — text-based PDFs '
                           'work best, e.g. exported from Word or Docs.',
-                          style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: AppColors.textMuted),
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 14),
                         OutlinedButton.icon(
                           onPressed: onPick,
-                          icon: const Icon(Icons.folder_open_rounded, size: 18),
+                          icon: const Icon(
+                              Icons.folder_open_rounded,
+                              size: 18),
                           label: const Text('Choose PDF Files'),
                         ),
                       ],
@@ -483,9 +809,11 @@ class _PdfUploadPanel extends StatelessWidget {
             children: [
               TextButton.icon(
                 onPressed: onClearAll,
-                icon: const Icon(Icons.delete_sweep_outlined, size: 16),
+                icon: const Icon(Icons.delete_sweep_outlined,
+                    size: 16),
                 label: const Text('Remove all'),
-                style: TextButton.styleFrom(foregroundColor: AppColors.overdue),
+                style: TextButton.styleFrom(
+                    foregroundColor: AppColors.overdue),
               ),
               TextButton.icon(
                 onPressed: onPick,
@@ -505,7 +833,8 @@ class _PdfUploadPanel extends StatelessWidget {
             ),
             child: Text(
               error!,
-              style: const TextStyle(color: AppColors.overdue, fontSize: 12),
+              style: const TextStyle(
+                  color: AppColors.overdue, fontSize: 12),
             ),
           ),
         ],
@@ -514,8 +843,6 @@ class _PdfUploadPanel extends StatelessWidget {
   }
 }
 
-/// A single extracted-chapter row inside the panel: icon, filename,
-/// char count, and a remove button.
 class _PdfFileRow extends StatelessWidget {
   final _PickedPdf file;
   final VoidCallback? onRemove;
@@ -533,7 +860,8 @@ class _PdfFileRow extends StatelessWidget {
             color: AppColors.excellent.withOpacity(0.15),
             borderRadius: BorderRadius.circular(10),
           ),
-          child: const Icon(Icons.picture_as_pdf_rounded, color: AppColors.excellent, size: 18),
+          child: const Icon(Icons.picture_as_pdf_rounded,
+              color: AppColors.excellent, size: 18),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -542,13 +870,15 @@ class _PdfFileRow extends StatelessWidget {
             children: [
               Text(
                 file.name,
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                style: const TextStyle(
+                    fontWeight: FontWeight.w700, fontSize: 13),
                 overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 2),
               Text(
                 '${file.text.length} characters',
-                style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                style: const TextStyle(
+                    fontSize: 11, color: AppColors.textMuted),
               ),
             ],
           ),

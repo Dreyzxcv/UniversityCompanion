@@ -21,10 +21,8 @@ class _QuizScreenState extends State<QuizScreen> {
   int _index = 0;
   bool _finishing = false;
 
-  // Currently-tapped (but not yet confirmed) choice for the multiple
-  // choice question type. Nothing is recorded into _answers until the
-  // user presses "Next" — tapping only highlights a choice, so a
-  // mis-tap/ghost-touch can be corrected before it's locked in.
+  // Currently-tapped (but not yet confirmed) choice for multiple
+  // choice and true/false question types.
   String? _selectedChoice;
 
   @override
@@ -61,6 +59,7 @@ class _QuizScreenState extends State<QuizScreen> {
     for (final q in questions) {
       totalScore += gradeAnswer(q, _answers[q.id] ?? []);
     }
+
     final roundedScore = totalScore.round();
 
     final attempt = QuizAttempt(
@@ -99,14 +98,21 @@ class _QuizScreenState extends State<QuizScreen> {
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
+
           final questions = snapshot.data!;
+
           if (questions.isEmpty) {
-            return const Center(child: Text('No questions generated.'));
+            return const Center(
+              child: Text('No questions generated.'),
+            );
           }
+
           final q = questions[_index];
 
           if (_finishing) {
-            return const Center(child: CircularProgressIndicator());
+            return const Center(
+              child: CircularProgressIndicator(),
+            );
           }
 
           return Padding(
@@ -120,13 +126,24 @@ class _QuizScreenState extends State<QuizScreen> {
                   color: AppColors.navyDark,
                 ),
                 const SizedBox(height: 8),
-                Text('Question ${_index + 1} of ${questions.length}',
-                    style: const TextStyle(color: AppColors.textMuted)),
+                Text(
+                  'Question ${_index + 1} of ${questions.length}',
+                  style: const TextStyle(
+                    color: AppColors.textMuted,
+                  ),
+                ),
                 const SizedBox(height: 20),
-                Text(q.prompt,
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                Text(
+                  q.prompt,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 const SizedBox(height: 24),
-                Expanded(child: _buildAnswerInput(q, questions)),
+                Expanded(
+                  child: _buildAnswerInput(q, questions),
+                ),
               ],
             ),
           );
@@ -135,7 +152,10 @@ class _QuizScreenState extends State<QuizScreen> {
     );
   }
 
-  Widget _buildAnswerInput(QuizQuestion q, List<QuizQuestion> questions) {
+  Widget _buildAnswerInput(
+    QuizQuestion q,
+    List<QuizQuestion> questions,
+  ) {
     final isLast = _index == questions.length - 1;
 
     switch (q.type) {
@@ -147,13 +167,18 @@ class _QuizScreenState extends State<QuizScreen> {
               child: ListView(
                 children: (q.choices ?? []).map((choice) {
                   final selected = _selectedChoice == choice;
+
                   return Card(
                     margin: const EdgeInsets.only(bottom: 10),
-                    color: selected ? AppColors.pillLavender : null,
+                    color: selected
+                        ? AppColors.pillLavender
+                        : null,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
                       side: BorderSide(
-                        color: selected ? AppColors.navyDark : AppColors.cardBorder,
+                        color: selected
+                            ? AppColors.navyDark
+                            : AppColors.cardBorder,
                         width: selected ? 2 : 1,
                       ),
                     ),
@@ -161,14 +186,28 @@ class _QuizScreenState extends State<QuizScreen> {
                       title: Text(
                         choice,
                         style: TextStyle(
-                          fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                          color: selected ? AppColors.navyDark : AppColors.textDark,
+                          fontWeight: selected
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          color: selected
+                              ? AppColors.navyDark
+                              : AppColors.textDark,
                         ),
                       ),
                       trailing: selected
-                          ? const Icon(Icons.check_circle_rounded, color: AppColors.navyDark)
-                          : const Icon(Icons.circle_outlined, color: AppColors.textMuted),
-                      onTap: () => setState(() => _selectedChoice = choice),
+                          ? const Icon(
+                              Icons.check_circle_rounded,
+                              color: AppColors.navyDark,
+                            )
+                          : const Icon(
+                              Icons.circle_outlined,
+                              color: AppColors.textMuted,
+                            ),
+                      onTap: () {
+                        setState(() {
+                          _selectedChoice = choice;
+                        });
+                      },
                     ),
                   );
                 }).toList(),
@@ -178,7 +217,11 @@ class _QuizScreenState extends State<QuizScreen> {
             FilledButton(
               onPressed: _selectedChoice == null
                   ? null
-                  : () => _recordAnswer(q.id, [_selectedChoice!], questions),
+                  : () => _recordAnswer(
+                        q.id,
+                        [_selectedChoice!],
+                        questions,
+                      ),
               child: Text(isLast ? 'Finish' : 'Next'),
             ),
           ],
@@ -190,14 +233,22 @@ class _QuizScreenState extends State<QuizScreen> {
           children: [
             TextField(
               controller: _enumCtrl,
-              decoration: const InputDecoration(labelText: 'Your answer'),
-              onSubmitted: (_) =>
-                  _recordAnswer(q.id, [_enumCtrl.text], questions),
+              decoration: const InputDecoration(
+                labelText: 'Your answer',
+              ),
+              onSubmitted: (_) => _recordAnswer(
+                q.id,
+                [_enumCtrl.text],
+                questions,
+              ),
             ),
             const SizedBox(height: 16),
             FilledButton(
-              onPressed: () =>
-                  _recordAnswer(q.id, [_enumCtrl.text], questions),
+              onPressed: () => _recordAnswer(
+                q.id,
+                [_enumCtrl.text],
+                questions,
+              ),
               child: Text(isLast ? 'Finish' : 'Next'),
             ),
           ],
@@ -207,13 +258,20 @@ class _QuizScreenState extends State<QuizScreen> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('Separate multiple answers with commas',
-                style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+            const Text(
+              'Separate multiple answers with commas',
+              style: TextStyle(
+                fontSize: 12,
+                color: AppColors.textMuted,
+              ),
+            ),
             const SizedBox(height: 8),
             TextField(
               controller: _enumCtrl,
               maxLines: 3,
-              decoration: const InputDecoration(labelText: 'Your answers'),
+              decoration: const InputDecoration(
+                labelText: 'Your answers',
+              ),
             ),
             const SizedBox(height: 16),
             FilledButton(
@@ -223,8 +281,108 @@ class _QuizScreenState extends State<QuizScreen> {
                     .map((e) => e.trim())
                     .where((e) => e.isNotEmpty)
                     .toList();
-                _recordAnswer(q.id, items, questions);
+
+                _recordAnswer(
+                  q.id,
+                  items,
+                  questions,
+                );
               },
+              child: Text(isLast ? 'Finish' : 'Next'),
+            ),
+          ],
+        );
+
+      case QuestionType.trueOrFalse:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: ListView(
+                children: ['True', 'False'].map((choice) {
+                  final selected = _selectedChoice == choice;
+
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    color: selected
+                        ? AppColors.pillLavender
+                        : null,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      side: BorderSide(
+                        color: selected
+                            ? AppColors.navyDark
+                            : AppColors.cardBorder,
+                        width: selected ? 2 : 1,
+                      ),
+                    ),
+                    child: ListTile(
+                      title: Text(
+                        choice,
+                        style: TextStyle(
+                          fontWeight: selected
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          color: selected
+                              ? AppColors.navyDark
+                              : AppColors.textDark,
+                        ),
+                      ),
+                      trailing: selected
+                          ? const Icon(
+                              Icons.check_circle_rounded,
+                              color: AppColors.navyDark,
+                            )
+                          : const Icon(
+                              Icons.circle_outlined,
+                              color: AppColors.textMuted,
+                            ),
+                      onTap: () {
+                        setState(() {
+                          _selectedChoice = choice;
+                        });
+                      },
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: _selectedChoice == null
+                  ? null
+                  : () => _recordAnswer(
+                        q.id,
+                        [_selectedChoice!],
+                        questions,
+                      ),
+              child: Text(isLast ? 'Finish' : 'Next'),
+            ),
+          ],
+        );
+
+      case QuestionType.fillInTheBlanks:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: _enumCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Your answer',
+              ),
+              onSubmitted: (_) => _recordAnswer(
+                q.id,
+                [_enumCtrl.text],
+                questions,
+              ),
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () => _recordAnswer(
+                q.id,
+                [_enumCtrl.text],
+                questions,
+              ),
               child: Text(isLast ? 'Finish' : 'Next'),
             ),
           ],

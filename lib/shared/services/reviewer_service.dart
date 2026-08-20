@@ -41,21 +41,19 @@ class ReviewerService {
 
   /// Generates a quiz from [sourceText] via Groq (Llama 3.3 70B), saves the
   /// reviewer + its questions to Firestore, and returns the new reviewer id.
+  ///
+  /// [typeCounts] maps each [QuestionType] to the number of questions of
+  /// that type to generate. Types with a count of 0 are ignored.
   Future<String> generateQuizFromText({
     required String title,
     required String sourceText,
     String? subjectCode,
-    int numQuestions = 10,
-    int numMcq = 5,
-    int numIdentification = 3,
-    int numEnumeration = 2,
+    required int numQuestions,
+    required Map<QuestionType, int> typeCounts,
   }) async {
     final questions = await _callGroq(
       sourceText: sourceText,
-      numQuestions: numQuestions,
-      numMcq: numMcq,
-      numIdentification: numIdentification,
-      numEnumeration: numEnumeration,
+      typeCounts: typeCounts,
     );
 
     final reviewerRef = await _reviewers.add(
@@ -84,10 +82,7 @@ class ReviewerService {
 
   Future<List<QuizQuestion>> _callGroq({
     required String sourceText,
-    required int numQuestions,
-    required int numMcq,
-    required int numIdentification,
-    required int numEnumeration,
+    required Map<QuestionType, int> typeCounts,
   }) async {
     if (groqApiKey == 'PASTE_YOUR_GROQ_KEY_HERE') {
       throw Exception(
@@ -97,6 +92,30 @@ class ReviewerService {
       );
     }
 
+    // Build a human-readable list of what the model should produce,
+    // e.g. "- 5 multiple_choice\n- 3 identification\n- 2 true_or_false"
+    final activeTypes = typeCounts.entries
+        .where((e) => e.value > 0)
+        .toList()
+      ..sort((a, b) => a.key.index.compareTo(b.key.index));
+
+    final typeBreakdown = activeTypes
+        .map((e) => '  - ${e.value} ${questionTypeToString(e.key)}')
+        .join('\n');
+
+    final totalQuestions =
+        activeTypes.fold<int>(0, (sum, e) => sum + e.value);
+
+    // Per-type instructions for the model.
+    const typeInstructions = '''
+Question type rules:
+- multiple_choice: Exactly 4 choices (key "choices"), only one correct. Include all 4 choices as plausible distractors drawn from the source material. Set "choices" to the list of 4 strings.
+- identification: Short factual prompt with ONE clear, concise correct answer. Set "choices" to null.
+- fill_in_the_blanks: A sentence with ONE blank represented by "___". The correct answer is the missing word or short phrase. Set "choices" to null.
+- true_or_false: A declarative statement that is either completely true or false based on the source. Set "correct_answers" to ["true"] or ["false"] (lowercase). Set "choices" to ["True", "False"].
+- enumeration: Ask the student to list multiple related items. Provide the FULL correct list in "correct_answers". Set "choices" to null.
+''';
+
     final systemPrompt = '''
 You are a strict JSON API. Respond with ONLY a single valid JSON object.
 No prose, no explanation, no markdown formatting, no code fences.
@@ -104,9 +123,9 @@ The JSON object must have exactly this shape:
 {
   "questions": [
     {
-      "type": "multiple_choice" | "identification" | "enumeration",
+      "type": "multiple_choice" | "identification" | "fill_in_the_blanks" | "true_or_false" | "enumeration",
       "prompt": "string",
-      "choices": ["string", "string", "string", "string"] or null (only for multiple_choice),
+      "choices": ["string", ...] or null,
       "correct_answers": ["string"],
       "explanation": "string"
     }
@@ -115,19 +134,21 @@ The JSON object must have exactly this shape:
 ''';
 
     final userPrompt = '''
-You are a quiz generator for a university study app used by Philippine college students. Your job is to convert a student's reviewer/notes into a structured practice quiz.
+You are a quiz generator for a university study app used by Philippine college students.
 
 INSTRUCTIONS:
 1. Read the reviewer content carefully and identify the key concepts, definitions, facts, and relationships worth testing.
-2. Generate exactly $numQuestions questions total, distributed across these types:
-  - Multiple choice ($numMcq questions): 4 plausible choices, only ONE correct. Wrong choices must be genuinely plausible, drawn from related concepts in the material.
-  - Identification ($numIdentification questions): a short factual prompt with one clear, concise correct answer.
-  - Enumeration ($numEnumeration questions): ask the student to list multiple related items. Provide the FULL correct list.
+2. Generate exactly $totalQuestions questions with this EXACT distribution:
+$typeBreakdown
+
+$typeInstructions
+
 3. Base every question strictly on the provided reviewer content. Do not introduce outside facts.
 4. Vary difficulty: mix recall-level and understanding-level questions.
 5. For each question, include a one-sentence explanation referencing the source material.
-6. If the content is too short for $numQuestions good questions, generate fewer rather than padding with filler.
+6. If the content is too short for the requested number of good questions, generate fewer rather than padding with filler.
 7. Write all questions and answers in the same language as the reviewer content.
+8. Output the questions in the SAME ORDER as the distribution above (all multiple_choice first, then the next type, etc.).
 
 Reviewer content:
 $sourceText
@@ -162,13 +183,13 @@ $sourceText
       throw Exception('Empty response from quiz generator.');
     }
 
-    var raw = (choices.first['message']?['content'] as String?)?.trim() ?? '';
+    var raw =
+        (choices.first['message']?['content'] as String?)?.trim() ?? '';
     if (raw.isEmpty) {
       throw Exception('Empty response from quiz generator.');
     }
 
-    // Safety net: strip accidental ```json fences even though the model
-    // was told not to include them.
+    // Safety net: strip accidental ```json fences.
     raw = raw.replaceAll(RegExp(r'^```(json)?', multiLine: true), '');
     raw = raw.replaceAll(RegExp(r'```$', multiLine: true), '').trim();
 
@@ -177,7 +198,7 @@ $sourceText
 
     return rawQuestions
         .map((q) => QuizQuestion.fromMap(
-              '', // id assigned when written to Firestore
+              '',
               q as Map<String, dynamic>,
             ))
         .toList();
@@ -204,8 +225,9 @@ $sourceText
         .where('reviewerId', isEqualTo: reviewerId)
         .orderBy('takenAt', descending: true)
         .snapshots()
-        .map((snap) =>
-            snap.docs.map((d) => QuizAttempt.fromMap(d.id, d.data())).toList());
+        .map((snap) => snap.docs
+            .map((d) => QuizAttempt.fromMap(d.id, d.data()))
+            .toList());
   }
 
   Future<QuizAttempt?> getLatestAttempt(String reviewerId) async {
@@ -221,6 +243,8 @@ $sourceText
 
   Future<List<QuizQuestion>> getQuestionsOnce(String reviewerId) async {
     final snap = await _questions(reviewerId).get();
-    return snap.docs.map((d) => QuizQuestion.fromMap(d.id, d.data())).toList();
+    return snap.docs
+        .map((d) => QuizQuestion.fromMap(d.id, d.data()))
+        .toList();
   }
 }
