@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../shared/models/class_session.dart';
 import '../shared/services/firestore_service.dart';
 import '../shared/services/term_controller.dart';
@@ -13,16 +14,22 @@ import 'weekly_grid.dart';
 class ScheduleScreen extends StatelessWidget {
   const ScheduleScreen({super.key});
 
-  Future<void> _syncReminder(BuildContext context, ClassSession session) async {
+  Future<void> _syncReminder(
+    BuildContext context,
+    ClassSession session,
+  ) async {
     final notifPrefs =
         context.read<NotificationPreferencesController>().prefs;
+
     if (notifPrefs.enabled) {
       await NotificationService.instance.scheduleClassReminder(
         session,
         minutesBefore: notifPrefs.classReminderMinutesBefore,
       );
     } else {
-      await NotificationService.instance.cancelClassReminder(session.id);
+      await NotificationService.instance.cancelClassReminder(
+        session.id,
+      );
     }
   }
 
@@ -34,16 +41,23 @@ class ScheduleScreen extends StatelessWidget {
     final result = await Navigator.push<ClassFormResult>(
       context,
       MaterialPageRoute(
-        builder: (_) => ClassFormScreen(allClassesInTerm: currentClasses),
+        builder: (_) => ClassFormScreen(
+          allClassesInTerm: currentClasses,
+        ),
       ),
     );
+
     if (result == null || !context.mounted) return;
 
     final service = context.read<FirestoreService>();
+
     await NotificationService.instance.requestPermission();
+
     for (final session in result.sessions) {
       await service.addClass(termId, session);
+
       if (!context.mounted) return;
+
       await _syncReminder(context, session);
     }
   }
@@ -63,34 +77,51 @@ class ScheduleScreen extends StatelessWidget {
         ),
       ),
     );
+
     if (result == null || !context.mounted) return;
+
+    if (result.sessions.isEmpty) return;
 
     final session = result.sessions.first;
 
     final action = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => _ClassActionSheet(session: existing),
+      builder: (ctx) => _ClassActionSheet(
+        session: existing,
+      ),
     );
 
     if (!context.mounted) return;
 
     if (action == null || action == 'save') {
-      await context.read<FirestoreService>().updateClass(termId, session);
+      await context
+          .read<FirestoreService>()
+          .updateClass(termId, session);
+
       if (!context.mounted) return;
+
       await _syncReminder(context, session);
     } else if (action == 'delete') {
-      await _confirmDelete(context, termId, existing.id);
+      await _confirmDelete(
+        context,
+        termId,
+        existing.id,
+      );
     }
   }
 
   Future<void> _confirmDelete(
-      BuildContext context, String termId, String classId) async {
+    BuildContext context,
+    String termId,
+    String classId,
+  ) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
         title: const Text('Delete class?'),
         content: const Text('This cannot be undone.'),
         actions: [
@@ -100,18 +131,23 @@ class ScheduleScreen extends StatelessWidget {
           ),
           FilledButton(
             style: FilledButton.styleFrom(
-                backgroundColor: AppColors.overdue),
+              backgroundColor: AppColors.overdue,
+            ),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Delete'),
           ),
         ],
       ),
     );
+
     if (confirmed == true && context.mounted) {
       await context
           .read<FirestoreService>()
           .deleteClass(termId, classId);
-      await NotificationService.instance.cancelClassReminder(classId);
+
+      await NotificationService.instance.cancelClassReminder(
+        classId,
+      );
     }
   }
 
@@ -127,34 +163,119 @@ class ScheduleScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // ── Header ────────────────────────────────────────────────
-            _ScheduleHeader(termId: termId),
+            // ── Header ─────────────────────────────────────────────────
+            _ScheduleHeader(
+              termId: termId,
+            ),
 
-            // ── Body ──────────────────────────────────────────────────
+            // ── Body ───────────────────────────────────────────────────
             Expanded(
               child: termId == null
                   ? const _NoTermCard()
                   : StreamBuilder<List<ClassSession>>(
                       stream: firestoreService.watchClasses(termId),
                       builder: (context, snapshot) {
-                        if (snapshot.connectionState ==
-                            ConnectionState.waiting) {
-                          return const Center(
-                              child: CircularProgressIndicator());
-                        }
                         final classes = snapshot.data ?? [];
 
-                        if (classes.isEmpty) {
-                          return _EmptySchedule(
-                            onAdd: () =>
-                                _openAddForm(context, termId, classes),
+                        // Re-sync reminders whenever schedule data refreshes.
+                        if (classes.isNotEmpty) {
+                          WidgetsBinding.instance
+                              .addPostFrameCallback((_) async {
+                            if (!context.mounted) return;
+
+                            final prefs = context
+                                .read<
+                                    NotificationPreferencesController>()
+                                .prefs;
+
+                            if (prefs.enabled) {
+                              await NotificationService.instance
+                                  .resyncAll(
+                                classes,
+                                minutesBefore:
+                                    prefs.classReminderMinutesBefore,
+                              );
+                            }
+                          });
+                        }
+
+                        // Loading state.
+                        if (snapshot.connectionState ==
+                                ConnectionState.waiting &&
+                            snapshot.data == null) {
+                          return const Center(
+                            child: CircularProgressIndicator(),
                           );
                         }
 
+                        // Error state.
+                        if (snapshot.hasError) {
+                          return Center(
+                            child: Padding(
+                              padding:
+                                  const EdgeInsets.all(24),
+                              child: Column(
+                                mainAxisSize:
+                                    MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons
+                                        .error_outline_rounded,
+                                    size: 48,
+                                    color:
+                                        AppColors.overdue,
+                                  ),
+                                  const SizedBox(height: 12),
+                                  const Text(
+                                    'Unable to load schedule',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight:
+                                          FontWeight.w800,
+                                      color:
+                                          AppColors.textDark,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    '${snapshot.error}',
+                                    textAlign:
+                                        TextAlign.center,
+                                    style:
+                                        const TextStyle(
+                                      color:
+                                          AppColors.textMuted,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }
+
+                        // Empty schedule.
+                        if (classes.isEmpty) {
+                          return _EmptySchedule(
+                            onAdd: () => _openAddForm(
+                              context,
+                              termId,
+                              classes,
+                            ),
+                          );
+                        }
+
+                        // Schedule grid.
                         return _GridContainer(
                           classes: classes,
-                          onTapClass: (s) =>
-                              _openEditForm(context, termId, s, classes),
+                          onTapClass: (session) {
+                            _openEditForm(
+                              context,
+                              termId,
+                              session,
+                              classes,
+                            );
+                          },
                         );
                       },
                     ),
@@ -163,20 +284,26 @@ class ScheduleScreen extends StatelessWidget {
         ),
       ),
 
-      // ── FAB ───────────────────────────────────────────────────────
+      // ── FAB ─────────────────────────────────────────────────────────
       floatingActionButton: termId == null
           ? null
           : StreamBuilder<List<ClassSession>>(
               stream: firestoreService.watchClasses(termId),
               builder: (context, snap) {
                 final classes = snap.data ?? [];
+
                 return Padding(
                   padding: EdgeInsets.only(
-                    bottom: MediaQuery.of(context).padding.bottom + 90,
+                    bottom:
+                        MediaQuery.of(context).padding.bottom +
+                            90,
                   ),
                   child: FloatingActionButton(
-                    onPressed: () =>
-                        _openAddForm(context, termId, classes),
+                    onPressed: () => _openAddForm(
+                      context,
+                      termId,
+                      classes,
+                    ),
                     backgroundColor: AppColors.navyDark,
                     foregroundColor: Colors.white,
                     elevation: 4,
@@ -195,7 +322,10 @@ class ScheduleScreen extends StatelessWidget {
 
 class _ScheduleHeader extends StatelessWidget {
   final String? termId;
-  const _ScheduleHeader({required this.termId});
+
+  const _ScheduleHeader({
+    required this.termId,
+  });
 
   String _todayLabel() {
     const days = [
@@ -207,19 +337,27 @@ class _ScheduleHeader extends StatelessWidget {
       'Saturday',
       'Sunday',
     ];
+
     return days[DateTime.now().weekday - 1];
   }
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 14, 16, 10),
+      padding: const EdgeInsets.fromLTRB(
+        20,
+        14,
+        16,
+        10,
+      ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+        crossAxisAlignment:
+            CrossAxisAlignment.center,
         children: [
           Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
               children: [
                 Text(
                   'Class Schedule',
@@ -243,11 +381,14 @@ class _ScheduleHeader extends StatelessWidget {
             ),
           ),
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 8,
+              vertical: 3,
+            ),
             decoration: BoxDecoration(
               color: context.pillBg,
-              borderRadius: BorderRadius.circular(20),
+              borderRadius:
+                  BorderRadius.circular(20),
             ),
             child: const TermSelector(),
           ),
@@ -272,37 +413,59 @@ class _GridContainer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Stats for the summary chips
-    const dayCodes = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
-    final todayCode = dayCodes[DateTime.now().weekday - 1];
+    // Stats for the summary chips.
+    const dayCodes = [
+      'MON',
+      'TUE',
+      'WED',
+      'THU',
+      'FRI',
+      'SAT',
+      'SUN',
+    ];
+
+    final todayCode =
+        dayCodes[DateTime.now().weekday - 1];
+
     final todayClasses =
         classes.where((c) => c.day == todayCode).length;
+
     final uniqueDays =
         classes.map((c) => c.day).toSet().length;
 
     return Column(
       children: [
-        // Summary strip
+        // Summary strip.
         _SummaryStrip(
           todayCount: todayClasses,
           totalDays: uniqueDays,
           totalClasses: classes.length,
         ),
 
-        // Grid card
+        // Grid card.
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+            padding: const EdgeInsets.fromLTRB(
+              12,
+              4,
+              12,
+              0,
+            ),
             child: Container(
               decoration: BoxDecoration(
                 color: context.cardBg,
-                borderRadius: BorderRadius.circular(24),
-                border:
-                    Border.all(color: context.cardBorderColor),
+                borderRadius:
+                    BorderRadius.circular(24),
+                border: Border.all(
+                  color: context.cardBorderColor,
+                ),
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.navyDark.withOpacity(
-                        context.isDark ? 0.3 : 0.06),
+                    color: AppColors.navyDark.withValues(
+                      alpha: context.isDark
+                          ? 0.3
+                          : 0.06,
+                    ),
                     blurRadius: 20,
                     offset: const Offset(0, 4),
                   ),
@@ -310,7 +473,12 @@ class _GridContainer extends StatelessWidget {
               ),
               clipBehavior: Clip.antiAlias,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+                padding: const EdgeInsets.fromLTRB(
+                  8,
+                  8,
+                  8,
+                  0,
+                ),
                 child: WeeklyGrid(
                   classes: classes,
                   onTapClass: onTapClass,
@@ -342,7 +510,12 @@ class _SummaryStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      padding: const EdgeInsets.fromLTRB(
+        16,
+        0,
+        16,
+        8,
+      ),
       child: Row(
         children: [
           _StatChip(
@@ -353,13 +526,15 @@ class _SummaryStrip extends StatelessWidget {
           const SizedBox(width: 8),
           _StatChip(
             icon: Icons.calendar_view_week_rounded,
-            label: '$totalDays day${totalDays == 1 ? '' : 's'}',
+            label:
+                '$totalDays day${totalDays == 1 ? '' : 's'}',
             color: AppColors.navyMid,
           ),
           const SizedBox(width: 8),
           _StatChip(
             icon: Icons.menu_book_outlined,
-            label: '$totalClasses class${totalClasses == 1 ? '' : 'es'}',
+            label:
+                '$totalClasses class${totalClasses == 1 ? '' : 'es'}',
             color: AppColors.excellent,
           ),
         ],
@@ -382,16 +557,24 @@ class _StatChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 10,
+        vertical: 6,
+      ),
       decoration: BoxDecoration(
-        color: color.withOpacity(context.isDark ? 0.15 : 0.08),
+        color: color.withValues(
+          alpha: context.isDark ? 0.15 : 0.08,
+        ),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 13, color: color),
+          Icon(
+            icon,
+            size: 13,
+            color: color,
+          ),
           const SizedBox(width: 5),
           Text(
             label,
@@ -413,16 +596,25 @@ class _StatChip extends StatelessWidget {
 
 class _ClassActionSheet extends StatelessWidget {
   final ClassSession session;
-  const _ClassActionSheet({required this.session});
+
+  const _ClassActionSheet({
+    required this.session,
+  });
 
   @override
   Widget build(BuildContext context) {
     return SafeArea(
       child: Container(
-        margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        margin: const EdgeInsets.fromLTRB(
+          12,
+          0,
+          12,
+          12,
+        ),
         decoration: BoxDecoration(
           color: context.cardBg,
-          borderRadius: BorderRadius.circular(28),
+          borderRadius:
+              BorderRadius.circular(28),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -434,15 +626,18 @@ class _ClassActionSheet extends StatelessWidget {
                 height: 4,
                 decoration: BoxDecoration(
                   color: AppColors.cardBorder,
-                  borderRadius: BorderRadius.circular(4),
+                  borderRadius:
+                      BorderRadius.circular(4),
                 ),
               ),
             ),
             const SizedBox(height: 16),
 
-            // Class identity pill
+            // Class identity pill.
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 20,
+              ),
               child: Row(
                 children: [
                   Container(
@@ -450,17 +645,22 @@ class _ClassActionSheet extends StatelessWidget {
                     height: 44,
                     decoration: BoxDecoration(
                       color: session.colorValue,
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius:
+                          BorderRadius.circular(14),
                     ),
                     child: Center(
                       child: Text(
                         session.subjectCode.length > 3
-                            ? session.subjectCode.substring(0, 3)
+                            ? session.subjectCode
+                                .substring(0, 3)
                             : session.subjectCode,
                         style: TextStyle(
-                          fontWeight: FontWeight.w800,
+                          fontWeight:
+                              FontWeight.w800,
                           fontSize: 11,
-                          color: session.colorValue.computeLuminance() > 0.45
+                          color: session.colorValue
+                                      .computeLuminance() >
+                                  0.45
                               ? AppColors.textDark
                               : Colors.white,
                         ),
@@ -470,22 +670,27 @@ class _ClassActionSheet extends StatelessWidget {
                   const SizedBox(width: 14),
                   Expanded(
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment:
+                          CrossAxisAlignment.start,
                       children: [
                         Text(
                           session.subjectCode,
                           style: const TextStyle(
-                            fontWeight: FontWeight.w800,
+                            fontWeight:
+                                FontWeight.w800,
                             fontSize: 16,
-                            color: AppColors.textDark,
+                            color:
+                                AppColors.textDark,
                           ),
                         ),
-                        if (session.subjectName.isNotEmpty)
+                        if (session
+                            .subjectName.isNotEmpty)
                           Text(
                             session.subjectName,
                             style: const TextStyle(
                               fontSize: 12,
-                              color: AppColors.textMuted,
+                              color:
+                                  AppColors.textMuted,
                             ),
                           ),
                       ],
@@ -496,7 +701,10 @@ class _ClassActionSheet extends StatelessWidget {
             ),
 
             const SizedBox(height: 16),
-            const Divider(height: 1, color: AppColors.cardBorder),
+            const Divider(
+              height: 1,
+              color: AppColors.cardBorder,
+            ),
 
             ListTile(
               leading: Container(
@@ -504,36 +712,53 @@ class _ClassActionSheet extends StatelessWidget {
                 height: 36,
                 decoration: BoxDecoration(
                   color: AppColors.pillLavender,
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius:
+                      BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.edit_outlined,
-                    color: AppColors.navyDark, size: 18),
+                child: const Icon(
+                  Icons.edit_outlined,
+                  color: AppColors.navyDark,
+                  size: 18,
+                ),
               ),
               title: const Text(
                 'Save changes',
-                style: TextStyle(fontWeight: FontWeight.w700),
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-              onTap: () => Navigator.pop(context, 'save'),
+              onTap: () =>
+                  Navigator.pop(context, 'save'),
             ),
+
             ListTile(
               leading: Container(
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: AppColors.overdue.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
+                  color: AppColors.overdue.withValues(
+                    alpha: 0.1,
+                  ),
+                  borderRadius:
+                      BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.delete_outline,
-                    color: AppColors.overdue, size: 18),
+                child: const Icon(
+                  Icons.delete_outline,
+                  color: AppColors.overdue,
+                  size: 18,
+                ),
               ),
               title: const Text(
                 'Delete class',
                 style: TextStyle(
-                    color: AppColors.overdue,
-                    fontWeight: FontWeight.w700),
+                  color: AppColors.overdue,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-              onTap: () => Navigator.pop(context, 'delete'),
+              onTap: () =>
+                  Navigator.pop(context, 'delete'),
             ),
+
             const SizedBox(height: 8),
           ],
         ),
@@ -548,13 +773,18 @@ class _ClassActionSheet extends StatelessWidget {
 
 class _EmptySchedule extends StatelessWidget {
   final VoidCallback onAdd;
-  const _EmptySchedule({required this.onAdd});
+
+  const _EmptySchedule({
+    required this.onAdd,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 40),
+        padding: const EdgeInsets.symmetric(
+          horizontal: 40,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -563,7 +793,8 @@ class _EmptySchedule extends StatelessWidget {
               height: 90,
               decoration: BoxDecoration(
                 color: AppColors.pillLavender,
-                borderRadius: BorderRadius.circular(26),
+                borderRadius:
+                    BorderRadius.circular(26),
               ),
               child: const Icon(
                 Icons.calendar_month_outlined,
@@ -593,8 +824,12 @@ class _EmptySchedule extends StatelessWidget {
             const SizedBox(height: 28),
             FilledButton.icon(
               onPressed: onAdd,
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('Add First Class'),
+              icon: const Icon(
+                Icons.add_rounded,
+              ),
+              label: const Text(
+                'Add First Class',
+              ),
             ),
           ],
         ),
@@ -613,27 +848,40 @@ class _NoTermCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 110),
+      padding: const EdgeInsets.fromLTRB(
+        20,
+        8,
+        20,
+        110,
+      ),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(28),
         decoration: BoxDecoration(
           gradient: AppColors.heroGradient,
-          borderRadius: BorderRadius.circular(28),
+          borderRadius:
+              BorderRadius.circular(28),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
           children: [
             Container(
               width: 52,
               height: 52,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.14),
-                borderRadius: BorderRadius.circular(16),
+                color: Colors.white.withValues(
+                  alpha: 0.14,
+                ),
+                borderRadius:
+                    BorderRadius.circular(16),
               ),
-              child: const Icon(Icons.calendar_month_rounded,
-                  color: Colors.white, size: 26),
+              child: const Icon(
+                Icons.calendar_month_rounded,
+                color: Colors.white,
+                size: 26,
+              ),
             ),
             const SizedBox(height: 20),
             const Text(
@@ -648,7 +896,12 @@ class _NoTermCard extends StatelessWidget {
             Text(
               'Create a term to start building your weekly schedule.',
               style: TextStyle(
-                  color: Colors.white.withOpacity(0.75), fontSize: 14, height: 1.4),
+                color: Colors.white.withValues(
+                  alpha: 0.75,
+                ),
+                fontSize: 14,
+                height: 1.4,
+              ),
             ),
           ],
         ),
