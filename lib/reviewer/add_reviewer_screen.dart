@@ -1,5 +1,4 @@
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
@@ -49,6 +48,7 @@ class AddReviewerScreen extends StatefulWidget {
 
 class _AddReviewerScreenState extends State<AddReviewerScreen> {
   final _titleCtrl = TextEditingController();
+  final _subjectCodeCtrl = TextEditingController(); // ← NEW
   final _textCtrl = TextEditingController();
 
   int _numQuestions = _kDefaultQuestions;
@@ -65,6 +65,7 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
   @override
   void dispose() {
     _titleCtrl.dispose();
+    _subjectCodeCtrl.dispose(); // ← NEW
     _textCtrl.dispose();
     super.dispose();
   }
@@ -80,7 +81,6 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
   void _toggleType(QuestionType type) {
     setState(() {
       if (_enabledTypes.contains(type)) {
-        // Keep at least one type enabled.
         if (_enabledTypes.length > 1) _enabledTypes.remove(type);
       } else {
         _enabledTypes.add(type);
@@ -188,15 +188,11 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
     });
   }
 
-  /// Distributes [_numQuestions] across the enabled types as evenly as
-  /// possible, giving any remainder to the first type in the list.
   Map<QuestionType, int> _computeCounts() {
     final types = _kAllTypes.where(_enabledTypes.contains).toList();
     if (types.isEmpty) return {};
-
     final base = _numQuestions ~/ types.length;
     final remainder = _numQuestions % types.length;
-
     final counts = <QuestionType, int>{};
     for (int i = 0; i < types.length; i++) {
       counts[types[i]] = base + (i < remainder ? 1 : 0);
@@ -226,9 +222,13 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
       final service = context.read<ReviewerService>();
       final counts = _computeCounts();
 
+      // Pass the subject code (trimmed; null if empty) to the service
+      final subjectCode = _subjectCodeCtrl.text.trim();
+
       final reviewerId = await service.generateQuizFromText(
         title: _titleCtrl.text.trim(),
         sourceText: _textCtrl.text.trim(),
+        subjectCode: subjectCode.isEmpty ? null : subjectCode, // ← NEW
         numQuestions: _numQuestions,
         typeCounts: counts,
       );
@@ -272,6 +272,19 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
               enabled: !_generating,
               decoration: const InputDecoration(
                   labelText: 'Title (e.g. "Computer Programming")'),
+            ),
+            const SizedBox(height: 12),
+
+            // ── Subject Code (NEW) ─────────────────────────────────────────
+            TextField(
+              controller: _subjectCodeCtrl,
+              enabled: !_generating,
+              textCapitalization: TextCapitalization.characters,
+              decoration: const InputDecoration(
+                labelText: 'Subject code (optional)',
+                hintText: 'e.g. CS101, MATH2',
+                prefixIcon: Icon(Icons.label_outline_rounded),
+              ),
             ),
             const SizedBox(height: 18),
 
@@ -375,10 +388,9 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
+                const Text(
                   'Number of questions',
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w700, fontSize: 14),
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
                 ),
                 Container(
                   padding:
@@ -407,7 +419,6 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
                   ? null
                   : (v) => setState(() => _numQuestions = v.round()),
             ),
-            // Subtle warning for very long quizzes.
             if (_numQuestions >= 40)
               Padding(
                 padding: const EdgeInsets.only(top: 2, bottom: 4),
@@ -463,8 +474,7 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
                           strokeWidth: 2, color: Colors.white),
                     )
                   : const Icon(Icons.auto_awesome_rounded),
-              label:
-                  Text(_generating ? 'Generating…' : 'Generate Quiz'),
+              label: Text(_generating ? 'Generating…' : 'Generate Quiz'),
             ),
           ],
         ),
@@ -474,7 +484,7 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
 }
 
 // ---------------------------------------------------------------------------
-// Type chip — shows type label + count badge when enabled
+// Type chip
 // ---------------------------------------------------------------------------
 
 class _TypeChip extends StatelessWidget {
@@ -498,8 +508,7 @@ class _TypeChip extends StatelessWidget {
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          padding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
             color: enabled
                 ? AppColors.navyDark
@@ -520,8 +529,8 @@ class _TypeChip extends StatelessWidget {
               if (enabled && count > 0) ...[
                 const SizedBox(width: 6),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 6, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(10),
@@ -565,8 +574,7 @@ class _DistributionPreview extends StatelessWidget {
     final total = counts.values.fold(0, (a, b) => a + b);
     if (total == 0) return const SizedBox.shrink();
 
-    final entries =
-        counts.entries.where((e) => e.value > 0).toList();
+    final entries = counts.entries.where((e) => e.value > 0).toList();
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -586,22 +594,19 @@ class _DistributionPreview extends StatelessWidget {
                 color: AppColors.textMuted),
           ),
           const SizedBox(height: 10),
-          // Segmented bar
           ClipRRect(
             borderRadius: BorderRadius.circular(6),
             child: Row(
               children: entries.map((e) {
-                final flex = e.value;
                 final color = _typeColors[e.key] ?? AppColors.navyDark;
                 return Expanded(
-                  flex: flex,
+                  flex: e.value,
                   child: Container(height: 8, color: color),
                 );
               }).toList(),
             ),
           ),
           const SizedBox(height: 10),
-          // Legend
           Wrap(
             spacing: 12,
             runSpacing: 6,
@@ -613,8 +618,8 @@ class _DistributionPreview extends StatelessWidget {
                   Container(
                     width: 8,
                     height: 8,
-                    decoration: BoxDecoration(
-                        color: color, shape: BoxShape.circle),
+                    decoration:
+                        BoxDecoration(color: color, shape: BoxShape.circle),
                   ),
                   const SizedBox(width: 5),
                   Text(
@@ -635,7 +640,7 @@ class _DistributionPreview extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Source toggle chip (unchanged from original)
+// Source toggle chip
 // ---------------------------------------------------------------------------
 
 class _SourceToggleChip extends StatelessWidget {
@@ -668,17 +673,14 @@ class _SourceToggleChip extends StatelessWidget {
             children: [
               Icon(icon,
                   size: 16,
-                  color:
-                      selected ? Colors.white : AppColors.navyDark),
+                  color: selected ? Colors.white : AppColors.navyDark),
               const SizedBox(width: 8),
               Text(
                 label,
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
                   fontSize: 13,
-                  color: selected
-                      ? Colors.white
-                      : AppColors.textDark,
+                  color: selected ? Colors.white : AppColors.textDark,
                 ),
               ),
             ],
@@ -690,7 +692,7 @@ class _SourceToggleChip extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// PDF upload panel (unchanged from original)
+// PDF upload panel
 // ---------------------------------------------------------------------------
 
 class _PdfUploadPanel extends StatelessWidget {
@@ -737,13 +739,11 @@ class _PdfUploadPanel extends StatelessWidget {
                     SizedBox(
                       height: 18,
                       width: 18,
-                      child:
-                          CircularProgressIndicator(strokeWidth: 2),
+                      child: CircularProgressIndicator(strokeWidth: 2),
                     ),
                     SizedBox(width: 12),
                     Text('Reading PDFs…',
-                        style:
-                            TextStyle(fontWeight: FontWeight.w600)),
+                        style: TextStyle(fontWeight: FontWeight.w600)),
                   ],
                 )
               : hasFiles
@@ -760,14 +760,12 @@ class _PdfUploadPanel extends StatelessWidget {
                           ),
                         ],
                         const SizedBox(height: 10),
-                        Container(
-                            height: 1, color: AppColors.cardBorder),
+                        Container(height: 1, color: AppColors.cardBorder),
                         const SizedBox(height: 10),
                         Text(
                           '${files.length} chapter${files.length == 1 ? '' : 's'} · $totalChars characters total',
                           style: const TextStyle(
-                              fontSize: 11,
-                              color: AppColors.textMuted),
+                              fontSize: 11, color: AppColors.textMuted),
                         ),
                       ],
                     )
@@ -779,24 +777,20 @@ class _PdfUploadPanel extends StatelessWidget {
                         const Text(
                           'Upload one or more PDFs',
                           style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14),
+                              fontWeight: FontWeight.w700, fontSize: 14),
                         ),
                         const SizedBox(height: 4),
                         const Text(
                           'Add a PDF per chapter (Ch. 1, Ch. 2, ...) — text-based PDFs '
                           'work best, e.g. exported from Word or Docs.',
                           style: TextStyle(
-                              fontSize: 11,
-                              color: AppColors.textMuted),
+                              fontSize: 11, color: AppColors.textMuted),
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 14),
                         OutlinedButton.icon(
                           onPressed: onPick,
-                          icon: const Icon(
-                              Icons.folder_open_rounded,
-                              size: 18),
+                          icon: const Icon(Icons.folder_open_rounded, size: 18),
                           label: const Text('Choose PDF Files'),
                         ),
                       ],
@@ -809,11 +803,10 @@ class _PdfUploadPanel extends StatelessWidget {
             children: [
               TextButton.icon(
                 onPressed: onClearAll,
-                icon: const Icon(Icons.delete_sweep_outlined,
-                    size: 16),
+                icon: const Icon(Icons.delete_sweep_outlined, size: 16),
                 label: const Text('Remove all'),
-                style: TextButton.styleFrom(
-                    foregroundColor: AppColors.overdue),
+                style:
+                    TextButton.styleFrom(foregroundColor: AppColors.overdue),
               ),
               TextButton.icon(
                 onPressed: onPick,
@@ -833,8 +826,8 @@ class _PdfUploadPanel extends StatelessWidget {
             ),
             child: Text(
               error!,
-              style: const TextStyle(
-                  color: AppColors.overdue, fontSize: 12),
+              style:
+                  const TextStyle(color: AppColors.overdue, fontSize: 12),
             ),
           ),
         ],
