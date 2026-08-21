@@ -241,7 +241,7 @@ class _Header extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Text(
-            "Here's what we added and improved in this release.",
+            "Here's what I added and improved in this release.",
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.8),
               fontSize: 13,
