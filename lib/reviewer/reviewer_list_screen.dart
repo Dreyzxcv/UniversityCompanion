@@ -10,8 +10,16 @@ import 'add_reviewer_screen.dart';
 import 'quiz_screen.dart';
 import 'quiz_result_screen.dart';
 
-class ReviewerListScreen extends StatelessWidget {
+class ReviewerListScreen extends StatefulWidget {
   const ReviewerListScreen({super.key});
+
+  @override
+  State<ReviewerListScreen> createState() => _ReviewerListScreenState();
+}
+
+class _ReviewerListScreenState extends State<ReviewerListScreen> {
+  /// null = "All" (no filter active)
+  String? _selectedSubjectCode;
 
   @override
   Widget build(BuildContext context) {
@@ -23,8 +31,9 @@ class ReviewerListScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // ── Header ──────────────────────────────────────────────────
             Padding(
-              padding: EdgeInsets.fromLTRB(20, 12, 20, 8),
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
               child: Row(
                 children: [
                   Expanded(
@@ -42,6 +51,8 @@ class ReviewerListScreen extends StatelessWidget {
                 ],
               ),
             ),
+
+            // ── Body ────────────────────────────────────────────────────
             Expanded(
               child: StreamBuilder<List<Reviewer>>(
                 stream: service.watchReviewers(),
@@ -49,7 +60,9 @@ class ReviewerListScreen extends StatelessWidget {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
                   }
+
                   final reviewers = snapshot.data ?? [];
+
                   if (reviewers.isEmpty) {
                     return EmptyState(
                       icon: Icons.auto_awesome_rounded,
@@ -60,18 +73,82 @@ class ReviewerListScreen extends StatelessWidget {
                       onCta: () => _openAddReviewer(context),
                     );
                   }
-                  return ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 110),
-                    itemCount: reviewers.length,
-                    itemBuilder: (context, i) {
-                      return _ReviewerCard(
-                        reviewer: reviewers[i],
-                        service: service,
-                        onTap: () => _handleTap(context, service, reviewers[i]),
-                        onDelete: () =>
-                            _confirmDelete(context, service, reviewers[i]),
-                      );
-                    },
+
+                  // Collect unique non-null subject codes from all reviewers.
+                  final subjectCodes = reviewers
+                      .map((r) => r.subjectCode)
+                      .whereType<String>()
+                      .where((c) => c.isNotEmpty)
+                      .toSet()
+                      .toList()
+                    ..sort();
+
+                  // If the previously selected code no longer exists (e.g.
+                  // after deleting a reviewer), reset to "All".
+                  if (_selectedSubjectCode != null &&
+                      !subjectCodes.contains(_selectedSubjectCode)) {
+                    WidgetsBinding.instance.addPostFrameCallback(
+                      (_) => setState(() => _selectedSubjectCode = null),
+                    );
+                  }
+
+                  final filtered = _selectedSubjectCode == null
+                      ? reviewers
+                      : reviewers
+                          .where((r) => r.subjectCode == _selectedSubjectCode)
+                          .toList();
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // ── Filter chips (only when >1 subject exists) ───
+                      if (subjectCodes.length > 1)
+                        _SubjectFilterBar(
+                          codes: subjectCodes,
+                          selected: _selectedSubjectCode,
+                          onSelected: (code) =>
+                              setState(() => _selectedSubjectCode = code),
+                        ),
+
+                      // ── Reviewer list ────────────────────────────────
+                      Expanded(
+                        child: filtered.isEmpty
+                            ? Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.filter_list_rounded,
+                                      size: 48,
+                                      color: Colors.grey.shade400,
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      'No reviewers for $_selectedSubjectCode',
+                                      style: TextStyle(
+                                        color: AppColors.textMuted,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            : ListView.builder(
+                                padding: const EdgeInsets.fromLTRB(20, 4, 20, 110),
+                                itemCount: filtered.length,
+                                itemBuilder: (context, i) {
+                                  return _ReviewerCard(
+                                    reviewer: filtered[i],
+                                    service: service,
+                                    onTap: () =>
+                                        _handleTap(context, service, filtered[i]),
+                                    onDelete: () =>
+                                        _confirmDelete(context, service, filtered[i]),
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
                   );
                 },
               ),
@@ -93,12 +170,6 @@ class ReviewerListScreen extends StatelessWidget {
     );
   }
 
-  // Navigator.push creates a new route in the Overlay as a SIBLING of
-  // this screen's subtree, not a descendant — so providers set above
-  // MainShell (in AuthGate) are NOT visible to pushed routes by default.
-  // We capture the service instance here, while `context` still has
-  // access to it, and re-supply it via Provider.value to the pushed
-  // route so AddReviewerScreen/QuizScreen can read it.
   void _openAddReviewer(BuildContext context) {
     final reviewerService = context.read<ReviewerService>();
     Navigator.push(
@@ -145,12 +216,14 @@ class ReviewerListScreen extends StatelessWidget {
               ),
             ),
             ListTile(
-              leading: const Icon(Icons.visibility_outlined, color: AppColors.navyDark),
+              leading: const Icon(Icons.visibility_outlined,
+                  color: AppColors.navyDark),
               title: const Text('View Last Result'),
               onTap: () => Navigator.pop(ctx, 'view'),
             ),
             ListTile(
-              leading: const Icon(Icons.refresh_rounded, color: AppColors.navyMid),
+              leading: const Icon(Icons.refresh_rounded,
+                  color: AppColors.navyMid),
               title: const Text('Retake Quiz'),
               onTap: () => Navigator.pop(ctx, 'retake'),
             ),
@@ -203,7 +276,8 @@ class ReviewerListScreen extends StatelessWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Delete reviewer?'),
         content: Text(
           'This will permanently delete "${reviewer.title}" and its questions. This cannot be undone.',
@@ -214,7 +288,8 @@ class ReviewerListScreen extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.overdue),
+            style:
+                FilledButton.styleFrom(backgroundColor: AppColors.overdue),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Delete'),
           ),
@@ -226,6 +301,99 @@ class ReviewerListScreen extends StatelessWidget {
     }
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Subject filter bar
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _SubjectFilterBar extends StatelessWidget {
+  final List<String> codes;
+  final String? selected;
+  final ValueChanged<String?> onSelected;
+
+  const _SubjectFilterBar({
+    required this.codes,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 44,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+        scrollDirection: Axis.horizontal,
+        children: [
+          // "All" chip
+          _FilterChip(
+            label: 'All',
+            selected: selected == null,
+            onTap: () => onSelected(null),
+          ),
+          const SizedBox(width: 8),
+          ...codes.map((code) => Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: _FilterChip(
+                  label: code,
+                  selected: selected == code,
+                  onTap: () =>
+                      onSelected(selected == code ? null : code),
+                ),
+              )),
+        ],
+      ),
+    );
+  }
+}
+
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _FilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.navyDark
+              : context.pillBg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected
+                ? AppColors.navyDark
+                : AppColors.cardBorder,
+            width: 1.2,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: selected ? Colors.white : context.textSecondary,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Reviewer card (unchanged logic, same visual)
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _ReviewerCard extends StatelessWidget {
   final Reviewer reviewer;
@@ -247,7 +415,7 @@ class _ReviewerCard extends StatelessWidget {
       direction: DismissDirection.endToStart,
       confirmDismiss: (_) async {
         onDelete();
-        return false; // deletion handled via dialog + stream update
+        return false;
       },
       background: Container(
         margin: const EdgeInsets.only(bottom: 12),
@@ -292,8 +460,11 @@ class _ReviewerCard extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            reviewer.title.isEmpty ? 'Untitled Reviewer' : reviewer.title,
-                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                            reviewer.title.isEmpty
+                                ? 'Untitled Reviewer'
+                                : reviewer.title,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w700, fontSize: 15),
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 4),
@@ -301,32 +472,44 @@ class _ReviewerCard extends StatelessWidget {
                             children: [
                               if (reviewer.subjectCode != null &&
                                   reviewer.subjectCode!.isNotEmpty) ...[
-                                Text(
-                                  reviewer.subjectCode!,
-                                  style: const TextStyle(
-                                      fontSize: 12,
-                                      color: AppColors.textMuted,
-                                      fontWeight: FontWeight.w600),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 7, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.pillLavender,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    reviewer.subjectCode!,
+                                    style: const TextStyle(
+                                        fontSize: 11,
+                                        color: AppColors.navyDark,
+                                        fontWeight: FontWeight.w700),
+                                  ),
                                 ),
-                                const Text(' · ',
-                                    style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                                const SizedBox(width: 6),
                               ],
                               Text(
                                 '${reviewer.questionCount} question${reviewer.questionCount == 1 ? '' : 's'}',
-                                style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                                style: const TextStyle(
+                                    fontSize: 12, color: AppColors.textMuted),
                               ),
                               const Text(' · ',
-                                  style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                                  style: TextStyle(
+                                      color: AppColors.textMuted,
+                                      fontSize: 12)),
                               Text(
                                 DateFormat('MMM d').format(reviewer.createdAt),
-                                style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                                style: const TextStyle(
+                                    fontSize: 12, color: AppColors.textMuted),
                               ),
                             ],
                           ),
                         ],
                       ),
                     ),
-                    const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
+                    const Icon(Icons.chevron_right_rounded,
+                        color: AppColors.textMuted),
                   ],
                 ),
                 StreamBuilder<List<QuizAttempt>>(
@@ -334,7 +517,7 @@ class _ReviewerCard extends StatelessWidget {
                   builder: (context, snapshot) {
                     final attempts = snapshot.data ?? const [];
                     if (attempts.isEmpty) return const SizedBox.shrink();
-                    final latest = attempts.first; // already ordered desc
+                    final latest = attempts.first;
                     final pct = latest.percentage;
                     final color = pct >= 75
                         ? AppColors.excellent
@@ -346,7 +529,8 @@ class _ReviewerCard extends StatelessWidget {
                       child: Row(
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(
                               color: color.withOpacity(0.12),
                               borderRadius: BorderRadius.circular(10),
@@ -364,7 +548,8 @@ class _ReviewerCard extends StatelessWidget {
                             const SizedBox(width: 8),
                             Text(
                               '${attempts.length} attempts',
-                              style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                              style: const TextStyle(
+                                  fontSize: 11, color: AppColors.textMuted),
                             ),
                           ],
                         ],
