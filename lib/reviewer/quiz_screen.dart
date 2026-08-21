@@ -21,6 +21,9 @@ class _QuizScreenState extends State<QuizScreen> {
   int _index = 0;
   bool _finishing = false;
 
+  // Shuffled snapshot of questions for this attempt — loaded once.
+  List<QuizQuestion>? _shuffledQuestions;
+
   // Currently-tapped (but not yet confirmed) choice for multiple
   // choice and true/false question types.
   String? _selectedChoice;
@@ -48,7 +51,39 @@ class _QuizScreenState extends State<QuizScreen> {
         _index++;
         _enumCtrl.clear();
         _selectedChoice = null;
+        // Restore previously saved answer for the next question if any
+        _restoreAnswerForIndex(_index, questions);
       });
+    }
+  }
+
+  /// Goes back to the previous question, restoring the previously saved answer.
+  void _goBack(List<QuizQuestion> questions) {
+    if (_index == 0) return;
+    setState(() {
+      _index--;
+      _enumCtrl.clear();
+      _selectedChoice = null;
+      _restoreAnswerForIndex(_index, questions);
+    });
+  }
+
+  /// Restores the saved answer for the question at [index] into the
+  /// appropriate input controller / selected choice.
+  void _restoreAnswerForIndex(int index, List<QuizQuestion> questions) {
+    final q = questions[index];
+    final saved = _answers[q.id];
+    if (saved == null || saved.isEmpty) return;
+
+    switch (q.type) {
+      case QuestionType.multipleChoice:
+      case QuestionType.trueOrFalse:
+        _selectedChoice = saved.first;
+      case QuestionType.identification:
+      case QuestionType.fillInTheBlanks:
+        _enumCtrl.text = saved.first;
+      case QuestionType.enumeration:
+        _enumCtrl.text = saved.join(', ');
     }
   }
 
@@ -99,14 +134,23 @@ class _QuizScreenState extends State<QuizScreen> {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final questions = snapshot.data!;
+          final rawQuestions = snapshot.data!;
 
-          if (questions.isEmpty) {
+          if (rawQuestions.isEmpty) {
             return const Center(
               child: Text('No questions generated.'),
             );
           }
 
+          // Shuffle once when we first receive the questions.
+          // After that, reuse the same shuffled list so the order
+          // doesn't change mid-attempt when the stream re-emits.
+          if (_shuffledQuestions == null) {
+            _shuffledQuestions = List<QuizQuestion>.from(rawQuestions)
+              ..shuffle();
+          }
+
+          final questions = _shuffledQuestions!;
           final q = questions[_index];
 
           if (_finishing) {
@@ -214,15 +258,12 @@ class _QuizScreenState extends State<QuizScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            FilledButton(
-              onPressed: _selectedChoice == null
-                  ? null
-                  : () => _recordAnswer(
-                        q.id,
-                        [_selectedChoice!],
-                        questions,
-                      ),
-              child: Text(isLast ? 'Finish' : 'Next'),
+            _NavButtons(
+              index: _index,
+              isLast: isLast,
+              canNext: _selectedChoice != null,
+              onBack: () => _goBack(questions),
+              onNext: () => _recordAnswer(q.id, [_selectedChoice!], questions),
             ),
           ],
         );
@@ -243,13 +284,12 @@ class _QuizScreenState extends State<QuizScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            FilledButton(
-              onPressed: () => _recordAnswer(
-                q.id,
-                [_enumCtrl.text],
-                questions,
-              ),
-              child: Text(isLast ? 'Finish' : 'Next'),
+            _NavButtons(
+              index: _index,
+              isLast: isLast,
+              canNext: true,
+              onBack: () => _goBack(questions),
+              onNext: () => _recordAnswer(q.id, [_enumCtrl.text], questions),
             ),
           ],
         );
@@ -274,21 +314,19 @@ class _QuizScreenState extends State<QuizScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            FilledButton(
-              onPressed: () {
+            _NavButtons(
+              index: _index,
+              isLast: isLast,
+              canNext: true,
+              onBack: () => _goBack(questions),
+              onNext: () {
                 final items = _enumCtrl.text
                     .split(',')
                     .map((e) => e.trim())
                     .where((e) => e.isNotEmpty)
                     .toList();
-
-                _recordAnswer(
-                  q.id,
-                  items,
-                  questions,
-                );
+                _recordAnswer(q.id, items, questions);
               },
-              child: Text(isLast ? 'Finish' : 'Next'),
             ),
           ],
         );
@@ -348,15 +386,12 @@ class _QuizScreenState extends State<QuizScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            FilledButton(
-              onPressed: _selectedChoice == null
-                  ? null
-                  : () => _recordAnswer(
-                        q.id,
-                        [_selectedChoice!],
-                        questions,
-                      ),
-              child: Text(isLast ? 'Finish' : 'Next'),
+            _NavButtons(
+              index: _index,
+              isLast: isLast,
+              canNext: _selectedChoice != null,
+              onBack: () => _goBack(questions),
+              onNext: () => _recordAnswer(q.id, [_selectedChoice!], questions),
             ),
           ],
         );
@@ -388,5 +423,43 @@ class _QuizScreenState extends State<QuizScreen> {
           ],
         );
     }
+  }
+}
+
+class _NavButtons extends StatelessWidget {
+  final int index;
+  final bool isLast;
+  final bool canNext;
+  final VoidCallback onBack;
+  final VoidCallback onNext;
+
+  const _NavButtons({
+    required this.index,
+    required this.isLast,
+    required this.canNext,
+    required this.onBack,
+    required this.onNext,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        if (index > 0)
+          Expanded(
+            child: OutlinedButton(
+              onPressed: onBack,
+              child: const Text('Back'),
+            ),
+          ),
+        if (index > 0) const SizedBox(width: 10),
+        Expanded(
+          child: FilledButton(
+            onPressed: canNext ? onNext : null,
+            child: Text(isLast ? 'Finish' : 'Next'),
+          ),
+        ),
+      ],
+    );
   }
 }
