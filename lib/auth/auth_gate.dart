@@ -8,6 +8,7 @@ import '../shared/services/notification_service.dart';
 import '../shared/services/notification_preferences.dart';
 import '../shared/widgets/main_shell.dart';
 import 'login_screen.dart';
+import '../shared/widgets/whats_new_dialog.dart';
 
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
@@ -82,8 +83,17 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
         // First time we see this user — request permission and sync
         if (_lastUid != user.uid) {
           _lastUid = user.uid;
+
           WidgetsBinding.instance.addPostFrameCallback((_) async {
             await NotificationService.instance.requestPermission();
+
+            if (!mounted) return;
+
+            await Future<void>.delayed(const Duration(milliseconds: 300));
+
+            if (!mounted) return;
+
+            await showWhatsNewIfNeeded(context);
           });
         }
 
