@@ -161,7 +161,7 @@ $sourceText
         'Authorization': 'Bearer $groqApiKey',
       },
       body: jsonEncode({
-        'model': 'openai/gpt-oss-120b',
+        'model': 'openai/gpt-oss-20b',
         'messages': [
           {'role': 'system', 'content': systemPrompt},
           {'role': 'user', 'content': userPrompt},
