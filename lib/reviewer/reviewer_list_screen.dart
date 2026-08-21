@@ -101,8 +101,8 @@ class _ReviewerListScreenState extends State<ReviewerListScreen> {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // ── Filter chips (only when >1 subject exists) ───
-                      if (subjectCodes.length > 1)
+                      // ── Filter chips (show whenever at least one subject code exists) ───
+                      if (subjectCodes.isNotEmpty)
                         _SubjectFilterBar(
                           codes: subjectCodes,
                           selected: _selectedSubjectCode,
