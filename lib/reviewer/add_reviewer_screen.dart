@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 import '../shared/models/quiz_question.dart';
+import '../shared/models/class_session.dart';
 import '../shared/services/reviewer_service.dart';
+import '../shared/services/firestore_service.dart';
+import '../shared/services/term_controller.dart';
 import '../shared/theme/app_theme.dart';
 import 'quiz_screen.dart';
 
@@ -48,7 +51,7 @@ class AddReviewerScreen extends StatefulWidget {
 
 class _AddReviewerScreenState extends State<AddReviewerScreen> {
   final _titleCtrl = TextEditingController();
-  final _subjectCodeCtrl = TextEditingController(); // ← NEW
+  final _subjectCodeCtrl = TextEditingController();
   final _textCtrl = TextEditingController();
 
   int _numQuestions = _kDefaultQuestions;
@@ -62,10 +65,45 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
   final List<_PickedPdf> _pdfFiles = [];
   String? _pdfError;
 
+  // Classes loaded from the user's schedule for subject code suggestions
+  List<ClassSession> _scheduleClasses = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadScheduleClasses();
+  }
+
+  Future<void> _loadScheduleClasses() async {
+    try {
+      final firestoreService = context.read<FirestoreService>();
+      final termController = context.read<TermController>();
+      final termId = termController.selectedTermId;
+      if (termId == null) return;
+      final classes = await firestoreService.fetchClassesOnce(termId);
+      if (mounted) {
+        setState(() => _scheduleClasses = classes);
+      }
+    } catch (_) {
+      // Not critical — suggestions just won't show
+    }
+  }
+
+  /// Unique subject codes from the user's schedule, sorted alphabetically.
+  List<String> get _subjectCodeSuggestions {
+    final codes = _scheduleClasses
+        .map((c) => c.subjectCode)
+        .where((c) => c.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+    return codes;
+  }
+
   @override
   void dispose() {
     _titleCtrl.dispose();
-    _subjectCodeCtrl.dispose(); // ← NEW
+    _subjectCodeCtrl.dispose();
     _textCtrl.dispose();
     super.dispose();
   }
@@ -222,13 +260,12 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
       final service = context.read<ReviewerService>();
       final counts = _computeCounts();
 
-      // Pass the subject code (trimmed; null if empty) to the service
       final subjectCode = _subjectCodeCtrl.text.trim();
 
       final reviewerId = await service.generateQuizFromText(
         title: _titleCtrl.text.trim(),
         sourceText: _textCtrl.text.trim(),
-        subjectCode: subjectCode.isEmpty ? null : subjectCode, // ← NEW
+        subjectCode: subjectCode.isEmpty ? null : subjectCode,
         numQuestions: _numQuestions,
         typeCounts: counts,
       );
@@ -258,6 +295,7 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
   @override
   Widget build(BuildContext context) {
     final counts = _computeCounts();
+    final suggestions = _subjectCodeSuggestions;
 
     return Scaffold(
       appBar: AppBar(title: const Text('New Reviewer')),
@@ -271,21 +309,98 @@ class _AddReviewerScreenState extends State<AddReviewerScreen> {
               controller: _titleCtrl,
               enabled: !_generating,
               decoration: const InputDecoration(
-                  labelText: 'Title (e.g. "Computer Programming")'),
+                  labelText: 'Title (e.g. "Mobile Development")',),
             ),
             const SizedBox(height: 12),
 
-            // ── Subject Code (NEW) ─────────────────────────────────────────
+            // ── Subject Code ───────────────────────────────────────────────
             TextField(
               controller: _subjectCodeCtrl,
               enabled: !_generating,
               textCapitalization: TextCapitalization.characters,
               decoration: const InputDecoration(
                 labelText: 'Subject code (optional)',
-                hintText: 'e.g. CS101, MATH2',
+                hintText: 'e.g. CAP102, ITRACKB4',
                 prefixIcon: Icon(Icons.label_outline_rounded),
               ),
+              onChanged: (_) => setState(() {}),
             ),
+
+            // Subject code chips from schedule
+            if (suggestions.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: suggestions.map((code) {
+                  final isSelected = _subjectCodeCtrl.text.trim().toUpperCase() ==
+                      code.toUpperCase();
+                  return GestureDetector(
+                    onTap: _generating
+                        ? null
+                        : () {
+                            setState(() {
+                              _subjectCodeCtrl.text =
+                                  isSelected ? '' : code;
+                            });
+                          },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 160),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? AppColors.navyDark
+                            : AppColors.pillLavender,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: isSelected
+                              ? AppColors.navyDark
+                              : AppColors.cardBorder,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.schedule_rounded,
+                            size: 13,
+                            color: isSelected
+                                ? Colors.white
+                                : AppColors.navyDark,
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            code,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: isSelected
+                                  ? Colors.white
+                                  : AppColors.textDark,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Icon(Icons.info_outline_rounded,
+                      size: 12, color: AppColors.textMuted),
+                  const SizedBox(width: 5),
+                  Text(
+                    'From your current term\'s schedule',
+                    style: TextStyle(
+                        fontSize: 11, color: AppColors.textMuted),
+                  ),
+                ],
+              ),
+            ],
+
             const SizedBox(height: 18),
 
             // ── Source toggle ──────────────────────────────────────────────
